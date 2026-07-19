@@ -1,0 +1,164 @@
+<script>
+// متغيرات تخزين سياق المستخدم الحالي والمهام
+let currentUser = { email: '', role: '' };
+let allFetchedTasks = [];
+
+// عند فتح الصفحة مباشرة يتم تحميل سياق المستخدم والمهام
+document.addEventListener("DOMContentLoaded", function() {
+  loadUserContext();
+});
+
+function loadUserContext() {
+  google.script.run
+    .withSuccessHandler(function(context) {
+      currentUser = context;
+      document.getElementById("userEmail").innerText = currentUser.email;
+      document.getElementById("userRole").innerText = "الدور: " + currentUser.role;
+      
+      // تعديل صلاحيات الواجهة الأمامية (Frontend RBAC Display)
+      if (currentUser.role === "Admin" || currentUser.role === "Project Manager") {
+        document.getElementById("managerActionPanel").classList.remove("hidden-component");
+      }
+      
+      // جلب المهام بعد معرفة الصلاحية
+      loadTasks();
+    })
+    .withFailureHandler(function(err) {
+      alert("فشل تحميل صلاحيات المستخدم: " + err.message);
+    })
+    .getCurrentUserContext();
+}
+
+function loadTasks() {
+  google.script.run
+    .withSuccessHandler(function(tasks) {
+      allFetchedTasks = tasks;
+      renderTasksTable(tasks);
+    })
+    .getTasksForUser();
+}
+
+function renderTasksTable(tasks) {
+  const tbody = document.getElementById("tasksTableBody");
+  if (tasks.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">لا يوجد مهام معينة لك حالياً أو لا تملك صلاحية عرضها.</td></tr>`;
+    return;
+  }
+  
+  let html = "";
+  tasks.forEach(task => {
+    let badgeClass = "badge-pending";
+    if (task.Status === "جاري العمل") badgeClass = "badge-progress";
+    if (task.Status === "مكتملة") badgeClass = "badge-completed";
+    
+    // إعداد أزرار التحكم بناءً على الصلاحيات والأدوار
+    let actionButtons = "";
+    if (currentUser.role === "Admin" || currentUser.role === "Project Manager") {
+      // المشرف والمدير يمكنهم تعديل تفاصيل المهمة بالكامل
+      actionButtons = `<button class="btn btn-sm btn-outline-secondary me-1" onclick="editTaskClick('${task.TaskID}')">📝 تعديل</button>`;
+    }
+    
+    // إضافة قائمة منسدلة سريعة لتغيير الحالة لجميع من لهم صلة (الموظف المسؤول أو المدير)
+    actionButtons += `
+      <select class="form-select form-select-sm d-inline-block w-auto" onchange="changeStatusQuick('${task.TaskID}', this.value)">
+        <option value="" disabled selected>تغيير الحالة</option>
+        <option value="قيد الانتظار" ${task.Status === 'قيد الانتظار' ? 'selected' : ''}>قيد الانتظار</option>
+        <option value="جاري العمل" ${task.Status === 'جاري العمل' ? 'selected' : ''}>جاري العمل</option>
+        <option value="مكتملة" ${task.Status === 'مكتملة' ? 'selected' : ''}>مكتملة</option>
+      </select>
+    `;
+
+    // تنسيق التاريخ بصورة مقروءة
+    let deadlineDate = task.Deadline ? new Date(task.Deadline).toLocaleDateString('ar-EG') : 'غير محدد';
+
+    html += `
+      <tr>
+        <td><strong>${task.TaskID}</strong></td>
+        <td>${task.TaskTitle}</td>
+        <td><small class="text-muted">${task.Description}</small></td>
+        <td><span class="text-primary">${task.AssignedTo}</span></td>
+        <td>${deadlineDate}</td>
+        <td><span class="badge ${badgeClass}">${task.Status}</span></td>
+        <td>${actionButtons}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = html;
+}
+
+// معالجة إرسال الفورم لحفظ المهمة الجديدة أو المعدلة
+function handleFormSubmit(event) {
+  event.preventDefault();
+  
+  const taskData = {
+    id: document.getElementById("taskId").value,
+    title: document.getElementById("taskTitle").value,
+    assignedTo: document.getElementById("taskAssignee").value,
+    deadline: document.getElementById("taskDeadline").value,
+    description: document.getElementById("taskDescription").value,
+    roleRequired: document.getElementById("roleRequired").value,
+    status: document.getElementById("taskStatus").value
+  };
+  
+  document.getElementById("submitBtn").disabled = true;
+  document.getElementById("submitBtn").innerText = "جاري الحفظ والتحقق من الصلاحيات...";
+  
+  google.script.run
+    .withSuccessHandler(function(msg) {
+      alert(msg);
+      resetTaskForm();
+      loadTasks(); // إعادة تحميل الجدول بعد الحفظ ليعكس الصلاحيات
+    })
+    .withFailureHandler(function(err) {
+      alert("خطأ في الصلاحيات أو البيانات: " + err.message);
+      document.getElementById("submitBtn").disabled = false;
+      document.getElementById("submitBtn").innerText = "حفظ وتعيين المهمة";
+    })
+    .saveTask(taskData);
+}
+
+// الضغط على زر تعديل يملأ البيانات للمدير/المشرف
+function editTaskClick(taskId) {
+  const task = allFetchedTasks.find(t => t.TaskID === taskId);
+  if (!task) return;
+  
+  document.getElementById("formTitle").innerText = "📝 تعديل بيانات المهمة " + taskId;
+  document.getElementById("taskId").value = task.TaskID;
+  document.getElementById("taskTitle").value = task.TaskTitle;
+  document.getElementById("taskAssignee").value = task.AssignedTo;
+  document.getElementById("taskDescription").value = task.Description;
+  document.getElementById("roleRequired").value = task.RoleRequired || "Team Member";
+  document.getElementById("taskStatus").value = task.Status;
+  
+  if (task.Deadline) {
+    let d = new Date(task.Deadline);
+    let dateString = d.toISOString().split('T')[0];
+    document.getElementById("taskDeadline").value = dateString;
+  }
+  
+  document.getElementById("submitBtn").innerText = "تحديث المهمة الحالية";
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// تغيير السريع للحالة من الجدول مباشرة (للشخص المسؤول أو الإدارة)
+function changeStatusQuick(taskId, newStatus) {
+  google.script.run
+    .withSuccessHandler(function(msg) {
+      alert(msg);
+      loadTasks();
+    })
+    .withFailureHandler(function(err) {
+      alert("خطأ: " + err.message);
+    })
+    .updateTaskStatus(taskId, newStatus);
+}
+
+function resetTaskForm() {
+  document.getElementById("taskForm").reset();
+  document.getElementById("taskId").value = "";
+  document.getElementById("formTitle").innerText = "🎯 تعيين مهمة جديدة لموظف";
+  document.getElementById("submitBtn").disabled = false;
+  document.getElementById("submitBtn").innerText = "حفظ وتعيين المهمة";
+}
+</script>
