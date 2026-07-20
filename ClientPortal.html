@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ط¨ظˆط§ط¨ط© ط§ظ„ط¹ظ…ظٹظ„ | ANC ERP</title>
+  <style>
+    :root{--bg:#0b0c0d;--panel:#18191c;--line:#303238;--text:#f5f6f8;--muted:#a0a4ab;--lime:#b8f83b;--red:#ff8179}*{box-sizing:border-box}body{margin:0;color:var(--text);background:var(--bg);font-family:Arial,Tahoma,sans-serif}.app{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr)}.side{padding:22px 15px;background:#151619;border-left:1px solid var(--line)}.brand{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 26px;font-size:19px;font-weight:bold}.mark{display:grid;place-items:center;width:33px;height:33px;color:#151700;border-radius:11px;background:linear-gradient(135deg,var(--lime),#ffbd59)}.user{margin:12px 0 20px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#1d1e22}.user strong{display:block;font-size:13px}.user span{display:block;margin-top:6px;color:var(--muted);font-size:11px}.nav{display:flex;align-items:center;gap:9px;min-height:42px;margin:4px 0;padding:0 10px;color:#d9dce1;border-radius:10px;font-size:13px}.nav.active{color:#151700;font-weight:bold;background:#f4f4f5}.logout{width:100%;margin-top:20px;color:#ffd2cf}.main{min-width:0;padding:28px}.top{margin-bottom:22px}.top h1{margin:0;font-size:27px}.top p{margin:7px 0 0;color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:18px}.stat{padding:16px;border:1px solid var(--line);border-radius:15px;background:var(--panel)}.stat span{color:var(--muted);font-size:11px}.stat strong{display:block;margin-top:8px;color:var(--lime);font-size:21px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}.card{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.head{padding:16px;border-bottom:1px solid var(--line)}.head h2{margin:0;font-size:16px}.body{padding:14px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:10px 7px;text-align:right;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:10px;font-weight:normal}.status{display:inline-block;padding:3px 7px;color:#d4fa91;border-radius:20px;background:rgba(184,248,59,.1);font-size:10px}.status.canceled{color:#ffd1ce;background:rgba(255,129,121,.1)}.empty{padding:25px;color:var(--muted);text-align:center}.error{padding:16px;color:#ffd1ce;border:1px solid #80423f;border-radius:12px;background:#351c1b}@media(max-width:800px){.app{display:block}.side{padding:12px;border-bottom:1px solid var(--line)}.brand{padding-bottom:8px}.user{display:none}.side nav{display:flex;overflow:auto}.nav{flex:0 0 auto}.logout{width:auto;margin:0}.main{padding:16px}.stats,.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><span>ANC ERP</span><span class="mark">A</span></div>
+      <div class="user"><strong id="userName">ط¬ط§ط±ظگ ط§ظ„طھط­ظ…ظٹظ„...</strong><span>ط¨ظˆط§ط¨ط© ط§ظ„ط¹ظ…ظٹظ„</span></div>
+      <nav>
+        <div class="nav active">â–¦ ظ„ظˆط­ط© ط§ظ„ط­ط³ط§ط¨</div>
+        <div class="nav">â–¤ ط§ظ„ظپظˆط§طھظٹط± ظˆط§ظ„ظ…ط¯ظپظˆط¹ط§طھ</div>
+        <div class="nav">â—ژ ط§ظ„ط·ظ„ط¨ط§طھ ظˆط§ظ„ظ…ط´ط±ظˆط¹ط§طھ</div>
+      </nav>
+      <button class="nav logout" onclick="logout()">طھط³ط¬ظٹظ„ ط§ظ„ط®ط±ظˆط¬</button>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <h1 id="title">ط¨ظˆط§ط¨ط© ط§ظ„ط¹ظ…ظٹظ„</h1>
+        <p>طھط§ط¨ط¹ ط·ظ„ط¨ط§طھظƒ ظˆظ…ط´ط±ظˆط¹ط§طھظƒ ظˆظپظˆط§طھظٹط±ظƒ ظˆظ…ط¯ظپظˆط¹ط§طھظƒ ظ…ظ† ظ…ظƒط§ظ† ظˆط§ط­ط¯.</p>
+      </header>
+
+      <div id="content">
+        <div class="empty">ط¬ط§ط±ظگ طھط­ظ…ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط­ط³ط§ط¨ظƒ...</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function token() {
+      var fromUrl = new URLSearchParams(window.location.search).get('token');
+      var saved = sessionStorage.getItem('anc_erp_session_token');
+      return fromUrl || saved || '';
+    }
+
+    function money(value, currency) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency || 'EGP',
+        maximumFractionDigits: 2
+      }).format(Number(value || 0));
+    }
+
+    function date(value) {
+      if (!value) return 'â€”';
+      var parsed = new Date(value);
+      return isNaN(parsed.getTime()) ? value :
+        new Intl.DateTimeFormat('ar-EG', {
+          year: 'numeric', month: 'short', day: 'numeric'
+        }).format(parsed);
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#039;');
+    }
+
+    function goLogin() { return; /* Google account session is managed by Google. */
+      sessionStorage.removeItem('anc_erp_session_token');
+      var link = document.createElement('a');
+      link.href = '?page=login';
+      window.top.location.href = link.href;
+    }
+
+    function logout() {
+      google.script.run
+        .withSuccessHandler(function(){ location.reload(); })
+        .withFailureHandler(function(){ location.reload(); });
+    }
+
+    function status(value) {
+      var canceled = String(value).toUpperCase() === 'CANCELED';
+
+      return '<span class="status ' + (canceled ? 'canceled' : '') + '">' +
+        escapeHtml(value || 'â€”') +
+        '</span>';
+    }
+
+    function render(data) {
+      document.getElementById('userName').textContent =
+        data.profile.fullName || data.profile.clientName;
+
+      document.getElementById('title').textContent =
+        'ظ…ط±ط­ط¨ظ‹ط§طŒ ' + (data.profile.clientName || data.profile.fullName);
+
+      var summary = data.summary || {};
+      var currency = summary.currency || 'EGP';
+
+      document.getElementById('content').innerHTML =
+        '<section class="stats">' +
+          stat('ط§ظ„ظ…ط´ط±ظˆط¹ط§طھ', summary.projectsCount || 0) +
+          stat('ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظپظˆط§طھظٹط±', money(summary.invoicesTotal, currency)) +
+          stat('ط§ظ„ظ…ط¯ظپظˆط¹ط§طھ', money(summary.paymentsTotal, currency)) +
+          stat('ط§ظ„ط±طµظٹط¯ ط§ظ„ظ…ط³طھط­ظ‚', money(summary.outstanding, currency)) +
+        '</section>' +
+
+        '<section class="grid">' +
+          card('ط§ظ„ظ…ط´ط±ظˆط¹ط§طھ ظˆط§ظ„ط·ظ„ط¨ط§طھ', projects(data.projects || [])) +
+          card('ط§ظ„ظپظˆط§طھظٹط±', invoices(data.invoices || [], currency)) +
+          card('ط¹ظ…ظ„ظٹط§طھ ط§ظ„ط¯ظپط¹', payments(data.payments || [], currency)) +
+          card('ط¥ط¹ظ„ط§ظ†ط§طھظƒ ظˆط­ط³ط§ط¨ظƒ ط§ظ„ط¬ط§ط±ظٹ', charges(data.adCharges || [], currency)) +
+        '</section>';
+    }
+
+    function stat(label, value) {
+      return '<article class="stat"><span>' + label +
+        '</span><strong>' + value + '</strong></article>';
+    }
+
+    function card(title, content) {
+      return '<article class="card"><div class="head"><h2>' + title +
+        '</h2></div><div class="body">' + content + '</div></article>';
+    }
+
+    function projects(items) {
+      if (!items.length) return '<div class="empty">ظ„ط§ طھظˆط¬ط¯ ظ…ط´ط±ظˆط¹ط§طھ ط­ط§ظ„ظٹظ‹ط§.</div>';
+
+      return '<table><thead><tr><th>ط§ظ„ظ…ط´ط±ظˆط¹</th><th>ط§ظ„ط­ط§ظ„ط©</th><th>ط§ظ„طھط³ظ„ظٹظ…</th></tr></thead><tbody>' +
+        items.map(function(item) {
+          return '<tr><td>' + escapeHtml(item.projectName) + '</td><td>' +
+            status(item.status) + '</td><td>' + date(item.dueDate) +
+            '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function invoices(items, currency) {
+      if (!items.length) return '<div class="empty">ظ„ط§ طھظˆط¬ط¯ ظپظˆط§طھظٹط±.</div>';
+
+      return '<table><thead><tr><th>ط§ظ„ظپط§طھظˆط±ط©</th><th>ط§ظ„ظ‚ظٹظ…ط©</th><th>ط§ظ„ط­ط§ظ„ط©</th></tr></thead><tbody>' +
+        items.map(function(item) {
+          return '<tr><td>' + escapeHtml(item.invoiceNumber) + '</td><td>' +
+            money(item.amount, item.currency || currency) + '</td><td>' +
+            status(item.status) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function payments(items, currency) {
+      if (!items.length) return '<div class="empty">ظ„ط§ طھظˆط¬ط¯ ظ…ط¯ظپظˆط¹ط§طھ ظ…ط³ط¬ظ„ط©.</div>';
+
+      return '<table><thead><tr><th>ط§ظ„طھط§ط±ظٹط®</th><th>ط§ظ„ظ‚ظٹظ…ط©</th><th>ط§ظ„ط·ط±ظٹظ‚ط©</th></tr></thead><tbody>' +
+        items.map(function(item) {
+          return '<tr><td>' + date(item.paymentDate) + '</td><td>' +
+            money(item.amount, item.currency || currency) + '</td><td>' +
+            escapeHtml(item.method || 'â€”') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function charges(items, currency) {
+      if (!items.length) return '<div class="empty">ظ„ط§ طھظˆط¬ط¯ ط¥ط¹ظ„ط§ظ†ط§طھ ظ…ط³ط¬ظ„ط©.</div>';
+
+      return '<table><thead><tr><th>ط§ظ„ظˆطµظپ</th><th>ط§ظ„ظ‚ظٹظ…ط©</th><th>ط§ظ„ط­ط§ظ„ط©</th></tr></thead><tbody>' +
+        items.map(function(item) {
+          return '<tr><td>' + escapeHtml(item.description) + '</td><td>' +
+            money(item.amount, item.currency || currency) + '</td><td>' +
+            status(item.status) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function load() {
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(function(error) {
+          document.getElementById('content').innerHTML =
+            '<div class="error">' +
+            escapeHtml(error && error.message ? error.message : 'طھط¹ط°ط± ظپطھط­ ط§ظ„ط¨ظˆط§ط¨ط©.') +
+            '</div>';
+        })
+        .portalGetClientDashboard();
+    }
+
+    document.addEventListener('DOMContentLoaded', load);
+  </script>
+</body>
+</html>

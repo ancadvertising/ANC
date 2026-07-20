@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+      --green: #17d26b;
+      --red: #ff7168;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 23px;
+    }
+
+    .metric.revenue strong { color: var(--lime); }
+    .metric.expense strong { color: var(--red); }
+    .metric.profit strong { color: var(--green); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+    }
+
+    .panel-body { padding: 16px; }
+
+    form {
+      display: grid;
+      gap: 11px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #3b3b40;
+      border-radius: 7px;
+      outline: 0;
+      color: var(--text);
+      background: #111113;
+      font: inherit;
+    }
+
+    textarea { min-height: 75px; }
+
+    button {
+      border: 0;
+      border-radius: 7px;
+      padding: 11px;
+      cursor: pointer;
+      color: #142000;
+      background: var(--lime);
+      font: inherit;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .6;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th {
+      color: var(--muted);
+      background: #1d1d20;
+      font-size: 11px;
+      font-weight: normal;
+    }
+
+    td { font-size: 13px; }
+
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 13px;
+      color: #d8ff83;
+      background: #2b3d18;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    #message.success {
+      display: block;
+      color: #a8f7c3;
+      background: #173c28;
+    }
+
+    #message.error {
+      display: block;
+      color: #ffb8b3;
+      background: #4b2020;
+    }
+
+    @media (max-width: 900px) {
+      .summary, .grid {
+        grid-template-columns: 1fr;
+      }
+
+      main { padding: 14px; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>المصروفات وربحية المشروعات</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="summary">
+      <article class="metric revenue">
+        <span>إيرادات المشروعات</span>
+        <strong id="revenueTotal">0</strong>
+      </article>
+
+      <article class="metric expense">
+        <span>إجمالي المصروفات</span>
+        <strong id="expenseTotal">0</strong>
+      </article>
+
+      <article class="metric profit">
+        <span>صافي الربح</span>
+        <strong id="profitTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>هامش الربح</span>
+        <strong id="marginTotal">0%</strong>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>تسجيل مصروف</h2>
+
+        <div class="panel-body">
+          <form id="expenseForm">
+            <label>تاريخ المصروف
+              <input name="expenseDate" type="date" required>
+            </label>
+
+            <label>التصنيف
+              <select name="category" required>
+                <option value="Advertising">Advertising</option>
+                <option value="Production">Production</option>
+                <option value="Freelancer">Freelancer</option>
+                <option value="Software">Software</option>
+                <option value="Travel">Travel</option>
+                <option value="Office">Office</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+
+            <label>الوصف
+              <textarea name="description" required></textarea>
+            </label>
+
+            <label>العميل — اختياري
+              <select id="expenseClientId" name="clientId"></select>
+            </label>
+
+            <label>المشروع — اختياري
+              <select id="expenseProjectId" name="projectId"></select>
+            </label>
+
+            <label>القيمة
+              <input name="amount" type="number" min="1" step="0.01" required>
+            </label>
+
+            <label>العملة
+              <input name="currency" value="EGP" required>
+            </label>
+
+            <label>المورد
+              <input name="vendor">
+            </label>
+
+            <label>طريقة الدفع
+              <select name="paymentMethod">
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="Cheque">Cheque</option>
+              </select>
+            </label>
+
+            <button type="submit">حفظ المصروف</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>ربحية المشروعات</h2>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>المشروع</th>
+                <th>الإيراد</th>
+                <th>المصروفات</th>
+                <th>الربح</th>
+                <th>الهامش</th>
+              </tr>
+            </thead>
+            <tbody id="profitabilityTable"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>آخر المصروفات</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>التصنيف</th>
+              <th>الوصف</th>
+              <th>المشروع</th>
+              <th>المورد</th>
+              <th>القيمة</th>
+            </tr>
+          </thead>
+          <tbody id="expensesTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var state = {};
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function money(value) {
+      return new Intl.NumberFormat('ar-EG', {
+        maximumFractionDigits: 2
+      }).format(Number(value || 0)) + ' EGP';
+    }
+
+    function today() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function showMessage(text, type) {
+      var box = document.getElementById('message');
+      box.textContent = text;
+      box.className = type;
+
+      setTimeout(function () {
+        box.style.display = 'none';
+      }, 5000);
+    }
+
+    function runServer(method, data) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (error) {
+            reject(new Error(error.message || String(error)));
+          })[method](data);
+      });
+    }
+
+    function formData(form) {
+      var result = {};
+
+      new FormData(form).forEach(function (value, key) {
+        result[key] = value;
+      });
+
+      return result;
+    }
+
+    function renderSelects() {
+      document.getElementById('expenseClientId').innerHTML =
+        '<option value="">بدون عميل محدد</option>' +
+        state.clients.map(function (client) {
+          return '<option value="' + escapeHtml(client['Client ID']) + '">' +
+            escapeHtml(client['Client Name']) +
+            '</option>';
+        }).join('');
+
+      document.getElementById('expenseProjectId').innerHTML =
+        '<option value="">بدون مشروع محدد</option>' +
+        state.projects.map(function (project) {
+          return '<option value="' + escapeHtml(project['Project ID']) + '">' +
+            escapeHtml(project['Project Name']) +
+            '</option>';
+        }).join('');
+    }
+
+    function calculateProjectTotals() {
+      var totals = {};
+
+      state.projects.forEach(function (project) {
+        totals[project['Project ID']] = {
+          revenue: 0,
+          expenses: 0
+        };
+      });
+
+      state.invoices.forEach(function (invoice) {
+        var projectId = invoice['Project ID'];
+
+        if (totals[projectId]) {
+          totals[projectId].revenue += Number(invoice['Amount'] || 0);
+        }
+      });
+
+      state.expenses.forEach(function (expense) {
+        var projectId = expense['Project ID'];
+
+        if (totals[projectId]) {
+          totals[projectId].expenses += Number(expense['Amount'] || 0);
+        }
+      });
+
+      return totals;
+    }
+
+    function renderSummary(projectTotals) {
+      var revenue = 0;
+      var expenses = state.expenses.reduce(function (total, expense) {
+        return total + Number(expense['Amount'] || 0);
+      }, 0);
+
+      Object.keys(projectTotals).forEach(function (projectId) {
+        revenue += projectTotals[projectId].revenue;
+      });
+
+      var profit = revenue - expenses;
+      var margin = revenue ? Math.round(profit / revenue * 100) : 0;
+
+      document.getElementById('revenueTotal').textContent = money(revenue);
+      document.getElementById('expenseTotal').textContent = money(expenses);
+      document.getElementById('profitTotal').textContent = money(profit);
+      document.getElementById('marginTotal').textContent = margin + '%';
+    }
+
+    function renderTables(projectTotals) {
+      document.getElementById('profitabilityTable').innerHTML =
+        state.projects.map(function (project) {
+          var totals = projectTotals[project['Project ID']];
+          var profit = totals.revenue - totals.expenses;
+          var margin = totals.revenue
+            ? Math.round(profit / totals.revenue * 100)
+            : 0;
+
+          return '<tr>' +
+            '<td>' + escapeHtml(project['Project Name']) + '</td>' +
+            '<td>' + money(totals.revenue) + '</td>' +
+            '<td>' + money(totals.expenses) + '</td>' +
+            '<td class="' + (profit >= 0 ? 'positive' : 'negative') + '">' +
+              money(profit) +
+            '</td>' +
+            '<td>' + margin + '%</td>' +
+            '</tr>';
+        }).join('');
+
+      var projectNames = state.projects.reduce(function (result, project) {
+        result[project['Project ID']] = project['Project Name'];
+        return result;
+      }, {});
+
+      document.getElementById('expensesTable').innerHTML =
+        state.expenses.map(function (expense) {
+          return '<tr>' +
+            '<td>' + escapeHtml(expense['Expense Date']) + '</td>' +
+            '<td><span class="badge">' + escapeHtml(expense['Category']) + '</span></td>' +
+            '<td>' + escapeHtml(expense['Description']) + '</td>' +
+            '<td>' + escapeHtml(
+              projectNames[expense['Project ID']] || 'مصروف عام'
+            ) + '</td>' +
+            '<td>' + escapeHtml(expense['Vendor']) + '</td>' +
+            '<td>' + money(expense['Amount']) + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function renderAll() {
+      renderSelects();
+
+      var totals = calculateProjectTotals();
+      renderSummary(totals);
+      renderTables(totals);
+
+      var dateInput = document.querySelector('input[name="expenseDate"]');
+      if (!dateInput.value) dateInput.value = today();
+    }
+
+    function refresh() {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state = data;
+          renderAll();
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+        })
+        .getUiProfitabilityData();
+    }
+
+    document.getElementById('expenseForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      var form = this;
+      var button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+
+      runServer('uiCreateExpense', formData(form))
+        .then(function () {
+          form.reset();
+          showMessage('تم تسجيل المصروف وتحديث الربحية.', 'success');
+          refresh();
+        })
+        .catch(function (error) {
+          showMessage(error.message, 'error');
+        })
+        .finally(function () {
+          button.disabled = false;
+        });
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

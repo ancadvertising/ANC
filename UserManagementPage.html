@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{margin:0;padding:24px;background:#090a0b;color:#fff;font-family:Arial}
+    .wrap{max-width:1200px;margin:auto}.card{background:#18191c;border:1px solid #333;border-radius:16px;padding:20px;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}input,select,button{padding:11px;border-radius:8px;border:1px solid #444;background:#101114;color:#fff;font:inherit}
+    button{background:#b8f83b;color:#172000;border:0;font-weight:bold;cursor:pointer}table{width:100%;border-collapse:collapse}td,th{padding:11px;border-bottom:1px solid #333;text-align:right}.active{color:#b8f83b}.off{color:#ff9999}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}.table{overflow:auto}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>إدارة المستخدمين</h1>
+
+    <section class="card">
+      <h2>إضافة حساب Google</h2>
+      <form id="form" class="grid">
+        <input id="name" placeholder="الاسم الكامل" required>
+        <input id="email" type="email" placeholder="البريد الإلكتروني" required>
+        <select id="type">
+          <option value="EMPLOYEE">موظف</option>
+          <option value="CLIENT">عميل</option>
+          <option value="ADMIN">مدير</option>
+        </select>
+        <select id="role">
+          <option value="EMPLOYEE">موظف</option>
+          <option value="MEDIA_BUYER">Media Buyer</option>
+          <option value="DESIGNER">مصمم</option>
+          <option value="STUDIO">استوديو</option>
+          <option value="ACCOUNT_MANAGER">مدير حساب</option>
+          <option value="ADMIN">مدير</option>
+          <option value="CLIENT">عميل</option>
+        </select>
+        <button type="submit">إضافة الحساب</button>
+      </form>
+      <p id="message"></p>
+    </section>
+
+    <section class="card table">
+      <h2>الحسابات المسجلة</h2>
+      <table>
+        <thead><tr><th>الاسم</th><th>البريد</th><th>النوع</th><th>الدور</th><th>الحالة</th><th>إجراء</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    function escapeHtml(value) {
+      var node = document.createElement('div');
+      node.textContent = value || '';
+      return node.innerHTML;
+    }
+
+    function loadUsers() {
+      google.script.run
+        .withSuccessHandler(function(users) {
+          document.getElementById('rows').innerHTML = users.map(function(user) {
+            return '<tr><td>' + escapeHtml(user.fullName) + '</td><td>' +
+              escapeHtml(user.email) + '</td><td>' + escapeHtml(user.userType) +
+              '</td><td>' + escapeHtml(user.role) + '</td><td class="' +
+              (user.active ? 'active' : 'off') + '">' +
+              (user.active ? 'نشط' : 'موقوف') + '</td><td><button onclick="toggleUser(\'' +
+              encodeURIComponent(user.email) + '\',' + (!user.active) + ')">' +
+              (user.active ? 'إيقاف' : 'تفعيل') + '</button></td></tr>';
+          }).join('');
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('message').textContent = error.message;
+        })
+        .userManagementList();
+    }
+
+    function toggleUser(encodedEmail, active) {
+      google.script.run.withSuccessHandler(loadUsers)
+        .withFailureHandler(function(error){ alert(error.message); })
+        .userManagementSetActive(decodeURIComponent(encodedEmail), active);
+    }
+
+    document.getElementById('form').addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      google.script.run
+        .withSuccessHandler(function() {
+          document.getElementById('message').textContent = 'تم إنشاء الحساب بنجاح.';
+          event.target.reset();
+          loadUsers();
+        })
+        .withFailureHandler(function(error) {
+          document.getElementById('message').textContent = error.message;
+        })
+        .userManagementCreate({
+          fullName: document.getElementById('name').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          userType: document.getElementById('type').value,
+          role: document.getElementById('role').value
+        });
+    });
+
+    loadUsers();
+  </script>
+</body>
+</html>

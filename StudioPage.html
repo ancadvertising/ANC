@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الاستوديو والإنتاج | ANC ERP</title>
+  <style>
+    :root{--bg:#0b0c0d;--panel:#18191c;--soft:#202125;--line:#303238;--text:#f5f6f8;--muted:#a1a4aa;--lime:#b8f83b;--danger:#ff7770;--blue:#7fbcff}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Tahoma,sans-serif}.app{min-height:100vh;display:grid;grid-template-columns:250px minmax(0,1fr)}
+    .side{position:sticky;top:0;height:100vh;padding:20px 14px;border-left:1px solid var(--line);background:#151619}.brand{display:flex;justify-content:space-between;align-items:center;padding:3px 8px 24px;font-size:19px;font-weight:800}.mark{width:32px;height:32px;display:grid;place-items:center;color:#151700;border-radius:11px;background:linear-gradient(135deg,var(--lime),#ffbd59)}.nav{display:flex;align-items:center;gap:10px;min-height:42px;margin:3px 0;padding:0 11px;color:#d9dce1;text-decoration:none;border-radius:10px;font-size:13px}.nav:hover{background:#25262b}.nav.active{color:#141600;font-weight:bold;background:#f3f4f5}.nav i{width:20px;color:var(--lime);font-style:normal}.nav.active i{color:#4c7600}.foot{position:absolute;right:14px;bottom:18px;left:14px;padding:14px 10px;color:var(--muted);border-top:1px solid var(--line);font-size:11px}
+    .main{min-width:0;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:22px}.top h1{margin:0;font-size:27px}.top p{margin:7px 0 0;color:var(--muted);font-size:13px}.actions{display:flex;gap:9px}button,input,select,textarea{font:inherit}.btn{min-height:40px;padding:0 14px;color:var(--text);cursor:pointer;border:1px solid var(--line);border-radius:10px;background:var(--panel)}.btn:hover{background:#292a2f}.btn.primary{color:#141600;font-weight:bold;border-color:var(--lime);background:var(--lime)}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:18px}.stat{padding:16px;border:1px solid var(--line);border-radius:15px;background:var(--panel)}.stat span{color:var(--muted);font-size:11px}.stat strong{display:block;margin-top:8px;color:var(--lime);font-size:24px}
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:18px}.board-wrap,.assets{overflow:hidden;border:1px solid var(--line);border-radius:17px;background:var(--panel)}.head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}.head h2{margin:0;font-size:16px}.filter{min-height:37px;padding:0 10px;color:#fff;outline:0;border:1px solid var(--line);border-radius:9px;background:#121316}.board{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;min-height:540px;overflow-x:auto;padding:14px}.column{min-width:220px;padding:10px;border:1px solid var(--line);border-radius:13px;background:#151619}.column.over{border-color:var(--lime);background:rgba(184,248,59,.06)}.column-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;font-weight:bold}.count{min-width:22px;padding:3px 7px;color:var(--lime);text-align:center;border-radius:20px;background:rgba(184,248,59,.1);font-size:10px}.cards{min-height:430px}.job{margin-bottom:9px;padding:12px;cursor:grab;border:1px solid var(--line);border-radius:11px;background:#202125}.job:active{cursor:grabbing}.job:hover{border-color:#4a4d54}.job h3{margin:0;font-size:13px}.job p{margin:7px 0;color:var(--muted);font-size:10px;line-height:1.65}.tags{display:flex;flex-wrap:wrap;gap:5px}.tag{padding:3px 7px;color:#d5f99c;border-radius:20px;background:rgba(184,248,59,.1);font-size:9px}.tag.priority-high{color:#ffd3a2;background:rgba(255,189,89,.1)}.job-actions{display:flex;justify-content:flex-end;margin-top:8px}.mini{min-height:27px;padding:0 8px;font-size:10px}
+    .asset-list{max-height:545px;overflow:auto;padding:12px}.asset{margin-bottom:9px;padding:12px;border:1px solid var(--line);border-radius:11px;background:#1d1e22}.asset h3{overflow:hidden;margin:0;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.asset p{margin:6px 0;color:var(--muted);font-size:10px}.asset a{color:var(--blue);font-size:11px}.empty{padding:30px;color:var(--muted);text-align:center}
+    .modal-back{position:fixed;z-index:10;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:#000a}.modal-back.open{display:flex}.modal{width:min(590px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:22px;border:1px solid var(--line);border-radius:18px;background:#1b1c20}.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.modal-head h2{margin:0;font-size:18px}.close{width:32px;height:32px;color:#fff;cursor:pointer;border:1px solid var(--line);border-radius:9px;background:#292a2f}.form{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}.group.full{grid-column:1/-1}.group label{display:block;margin-bottom:6px;color:#d5d7da;font-size:12px}.field{width:100%;min-height:40px;padding:0 10px;color:#fff;outline:0;border:1px solid var(--line);border-radius:9px;background:#111214}.field:focus{border-color:var(--lime)}textarea.field{min-height:90px;padding-top:9px;resize:vertical}.modal-actions{display:flex;gap:10px;margin-top:20px}.toast{position:fixed;z-index:20;bottom:20px;left:20px;display:none;padding:13px 16px;color:#eaffbf;border:1px solid #5a8824;border-radius:11px;background:#1d2d12;font-size:13px}.toast.error{color:#ffd2cf;border-color:#864440;background:#371d1c}
+    @media(max-width:1050px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.app{display:block}.side{position:relative;height:auto;border-bottom:1px solid var(--line);border-left:0}.side nav{display:flex;overflow:auto}.nav{flex:0 0 auto}.foot{display:none}.main{padding:16px}.top{align-items:flex-start}.form{grid-template-columns:1fr}.group.full{grid-column:auto}.board{grid-template-columns:repeat(4,250px)}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><span>ANC ERP</span><span class="mark">A</span></div>
+      <nav>
+        <a class="nav" href="?page=dashboard"><i>▦</i>لوحة المؤشرات</a>
+        <a class="nav" href="?page=crm"><i>◎</i>العملاء والمشروعات</a>
+        <a class="nav" href="?page=ads"><i>◉</i>الإعلانات المدفوعة</a>
+        <a class="nav active" href="?page=studio"><i>▣</i>الاستوديو والإنتاج</a>
+        <a class="nav" href="?page=operations"><i>✓</i>التشغيل والمهام</a>
+        <a class="nav" href="?page=finance"><i>£</i>الفواتير والمدفوعات</a>
+        <a class="nav" href="?page=reports"><i>▥</i>التقارير</a>
+      </nav>
+      <div class="foot">ANC Advertising<br>Marketing Agency ERP · v1.0</div>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <div><h1>الاستوديو والإنتاج</h1><p>تابع طلبات التصوير والمونتاج والتصميم والتسليم من مكان واحد.</p></div>
+        <div class="actions">
+          <button class="btn" onclick="loadData()">↻ تحديث</button>
+          <button class="btn" onclick="openAssetModal()">＋ ملف أو أصل</button>
+          <button class="btn primary" onclick="openJobModal()">＋ طلب إنتاج</button>
+        </div>
+      </header>
+
+      <section class="stats">
+        <article class="stat"><span>إجمالي الطلبات</span><strong id="jobsCount">—</strong></article>
+        <article class="stat"><span>قيد التنفيذ</span><strong id="activeJobsCount">—</strong></article>
+        <article class="stat"><span>تم التسليم</span><strong id="deliveredJobsCount">—</strong></article>
+        <article class="stat"><span>الأصول والملفات</span><strong id="assetsCount">—</strong></article>
+      </section>
+
+      <section class="layout">
+        <article class="board-wrap">
+          <div class="head">
+            <h2>لوحة مراحل الإنتاج</h2>
+            <input id="search" class="filter" placeholder="بحث..." oninput="filterJobs()">
+          </div>
+          <div class="board">
+            <section class="column" data-status="NEW"><div class="column-title">طلبات جديدة <span id="countNEW" class="count">0</span></div><div id="cardsNEW" class="cards"></div></section>
+            <section class="column" data-status="IN_PROGRESS"><div class="column-title">قيد التنفيذ <span id="countIN_PROGRESS" class="count">0</span></div><div id="cardsIN_PROGRESS" class="cards"></div></section>
+            <section class="column" data-status="IN_REVIEW"><div class="column-title">بانتظار المراجعة <span id="countIN_REVIEW" class="count">0</span></div><div id="cardsIN_REVIEW" class="cards"></div></section>
+            <section class="column" data-status="DELIVERED"><div class="column-title">تم التسليم <span id="countDELIVERED" class="count">0</span></div><div id="cardsDELIVERED" class="cards"></div></section>
+          </div>
+        </article>
+
+        <article class="assets">
+          <div class="head"><h2>الأصول الحديثة</h2><button class="btn mini" onclick="openAssetModal()">＋ إضافة</button></div>
+          <div id="assetList" class="asset-list"><div class="empty">جارِ التحميل...</div></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="jobModal" class="modal-back" onclick="closeByBackdrop(event,'jobModal')">
+    <section class="modal">
+      <div class="modal-head"><h2 id="jobTitle">إضافة طلب إنتاج</h2><button class="close" onclick="closeModal('jobModal')">×</button></div>
+      <form onsubmit="saveJob(event)">
+        <input id="studioJobId" type="hidden">
+        <div class="form">
+          <div class="group full"><label>العميل</label><select id="jobClientId" class="field" required></select></div>
+          <div class="group"><label>عنوان الطلب</label><input id="jobName" class="field" required></div>
+          <div class="group"><label>نوع الخدمة</label><select id="jobService" class="field"><option value="PHOTOGRAPHY">تصوير فوتوغرافي</option><option value="VIDEOGRAPHY">تصوير فيديو</option><option value="EDITING">مونتاج</option><option value="GRAPHIC_DESIGN">تصميم جرافيك</option><option value="MOTION_GRAPHICS">موشن جرافيك</option><option value="COPYWRITING">محتوى وكتابة</option><option value="OTHER">أخرى</option></select></div>
+          <div class="group"><label>الحالة</label><select id="jobStatus" class="field"><option value="NEW">طلب جديد</option><option value="IN_PROGRESS">قيد التنفيذ</option><option value="IN_REVIEW">بانتظار المراجعة</option><option value="DELIVERED">تم التسليم</option><option value="ARCHIVED">مؤرشف</option></select></div>
+          <div class="group"><label>الأولوية</label><select id="jobPriority" class="field"><option value="LOW">منخفضة</option><option value="MEDIUM">متوسطة</option><option value="HIGH">عالية</option><option value="URGENT">عاجلة</option></select></div>
+          <div class="group"><label>المسؤول</label><input id="jobAssigned" class="field" placeholder="البريد أو اسم الموظف"></div>
+          <div class="group"><label>تاريخ التسليم</label><input id="jobDue" class="field" type="date"></div>
+          <div class="group full"><label>وصف الطلب والـ Brief</label><textarea id="jobBrief" class="field"></textarea></div>
+        </div>
+        <div class="modal-actions"><button class="btn primary">حفظ الطلب</button><button class="btn" type="button" onclick="closeModal('jobModal')">إلغاء</button></div>
+      </form>
+    </section>
+  </div>
+
+  <div id="assetModal" class="modal-back" onclick="closeByBackdrop(event,'assetModal')">
+    <section class="modal">
+      <div class="modal-head"><h2>إضافة أصل أو ملف</h2><button class="close" onclick="closeModal('assetModal')">×</button></div>
+      <form onsubmit="saveAsset(event)">
+        <div class="form">
+          <div class="group full"><label>طلب الإنتاج</label><select id="assetJobId" class="field" required></select></div>
+          <div class="group"><label>اسم الملف</label><input id="assetName" class="field" required></div>
+          <div class="group"><label>نوع الأصل</label><select id="assetType" class="field"><option value="IMAGE">صورة</option><option value="VIDEO">فيديو</option><option value="DESIGN">تصميم</option><option value="DOCUMENT">مستند</option><option value="SOURCE_FILE">ملف مصدر</option><option value="OTHER">أخرى</option></select></div>
+          <div class="group"><label>الإصدار</label><input id="assetVersion" class="field" value="v1"></div>
+          <div class="group"><label>الحالة</label><select id="assetStatus" class="field"><option value="DRAFT">مسودة</option><option value="IN_REVIEW">مراجعة</option><option value="APPROVED">معتمد</option><option value="DELIVERED">تم التسليم</option></select></div>
+          <div class="group full"><label>رابط Google Drive</label><input id="assetDriveUrl" class="field" type="url" required placeholder="https://drive.google.com/..."></div>
+        </div>
+        <div class="modal-actions"><button class="btn primary">حفظ الملف</button><button class="btn" type="button" onclick="closeModal('assetModal')">إلغاء</button></div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    var state = {jobs:[], assets:[], clients:[]};
+
+    function esc(value) {
+      return String(value === null || typeof value === 'undefined' ? '' : value)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    function errorText(error) {
+      return error && error.message ? error.message : 'حدث خطأ غير متوقع.';
+    }
+
+    function toast(text, error) {
+      var el = document.getElementById('toast');
+      el.textContent = text;
+      el.className = 'toast' + (error ? ' error' : '');
+      el.style.display = 'block';
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(function(){el.style.display='none';},3500);
+    }
+
+    function formatDate(value) {
+      if (!value) return 'بدون تاريخ';
+      var d = new Date(value);
+      return isNaN(d.getTime()) ? value : new Intl.DateTimeFormat('ar-EG',{month:'short',day:'numeric'}).format(d);
+    }
+
+    function loadClients() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          state.clients = data.clients || [];
+          fillClientOptions();
+        })
+        .withFailureHandler(function(error){toast(errorText(error),true);})
+        .crmGetOverview({});
+    }
+
+    function fillClientOptions() {
+      document.getElementById('jobClientId').innerHTML =
+        '<option value="">اختر العميل</option>' +
+        state.clients.map(function(c){return '<option value="' + esc(c.clientId) + '">' + esc(c.clientName) + '</option>';}).join('');
+    }
+
+    function fillJobOptions() {
+      document.getElementById('assetJobId').innerHTML =
+        '<option value="">اختر طلب الإنتاج</option>' +
+        state.jobs.map(function(j){return '<option value="' + esc(j.studioJobId) + '">' + esc(j.jobTitle) + ' — ' + esc(j.clientName) + '</option>';}).join('');
+    }
+
+    function loadData() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          state.jobs = data.jobs || [];
+          state.assets = data.assets || [];
+          var s = data.summary || {};
+          document.getElementById('jobsCount').textContent = s.jobsCount || 0;
+          document.getElementById('activeJobsCount').textContent = s.activeJobsCount || 0;
+          document.getElementById('deliveredJobsCount').textContent = s.deliveredJobsCount || 0;
+          document.getElementById('assetsCount').textContent = s.assetsCount || 0;
+          renderJobs(state.jobs);
+          renderAssets(state.assets);
+          fillJobOptions();
+        })
+        .withFailureHandler(function(error){toast(errorText(error),true);})
+        .studioGetOverview({});
+    }
+
+    function renderJobs(jobs) {
+      ['NEW','IN_PROGRESS','IN_REVIEW','DELIVERED'].forEach(function(status) {
+        var columnJobs = jobs.filter(function(job){return job.status === status;});
+        document.getElementById('count' + status).textContent = columnJobs.length;
+        document.getElementById('cards' + status).innerHTML = columnJobs.length
+          ? columnJobs.map(renderJob).join('')
+          : '<div class="empty">لا توجد طلبات</div>';
+      });
+    }
+
+    function renderJob(job) {
+      var high = ['HIGH','URGENT'].indexOf(String(job.priority).toUpperCase()) !== -1;
+
+      return '<article class="job" draggable="true" data-id="' + esc(job.studioJobId) + '">' +
+        '<h3>' + esc(job.jobTitle) + '</h3>' +
+        '<p>' + esc(job.clientName) + ' · ' + esc(job.serviceType) + '<br>' +
+        'المسؤول: ' + esc(job.assignedTo || 'غير محدد') + ' · ' + formatDate(job.dueDate) + '</p>' +
+        '<div class="tags"><span class="tag ' + (high ? 'priority-high' : '') + '">' + esc(job.priority || 'MEDIUM') + '</span></div>' +
+        '<div class="job-actions"><button class="btn mini" onclick="editJob(\'' + esc(job.studioJobId) + '\')">تعديل</button></div>' +
+        '</article>';
+    }
+
+    function renderAssets(assets) {
+      var holder = document.getElementById('assetList');
+
+      holder.innerHTML = assets.length ? assets.map(function(asset) {
+        return '<article class="asset"><h3>' + esc(asset.assetName) + '</h3>' +
+          '<p>' + esc(asset.jobTitle) + '<br>' + esc(asset.assetType) + ' · ' + esc(asset.version) + ' · ' + esc(asset.status) + '</p>' +
+          '<a href="' + esc(asset.driveUrl) + '" target="_blank">فتح من Google Drive ↗</a></article>';
+      }).join('') : '<div class="empty">لا توجد ملفات مرتبطة بطلبات الإنتاج.</div>';
+    }
+
+    function filterJobs() {
+      var search = document.getElementById('search').value.toLowerCase().trim();
+
+      renderJobs(state.jobs.filter(function(job) {
+        return [job.jobTitle,job.clientName,job.serviceType,job.assignedTo,job.status]
+          .join(' ').toLowerCase().indexOf(search) !== -1;
+      }));
+    }
+
+    function openModal(id){document.getElementById(id).classList.add('open');}
+    function closeModal(id){document.getElementById(id).classList.remove('open');}
+    function closeByBackdrop(event,id){if(event.target.id===id)closeModal(id);}
+
+    function openJobModal() {
+      if (!state.clients.length) {
+        toast('أضف عميلًا أولًا قبل إنشاء طلب إنتاج.',true);
+        return;
+      }
+
+      document.querySelector('#jobModal form').reset();
+      document.getElementById('studioJobId').value = '';
+      document.getElementById('jobTitle').textContent = 'إضافة طلب إنتاج';
+      fillClientOptions();
+      openModal('jobModal');
+    }
+
+    function editJob(id) {
+      var job = state.jobs.find(function(item){return item.studioJobId === id;});
+      if (!job) return;
+
+      fillClientOptions();
+      document.getElementById('jobTitle').textContent = 'تعديل طلب إنتاج';
+      document.getElementById('studioJobId').value = job.studioJobId;
+      document.getElementById('jobClientId').value = job.clientId;
+      document.getElementById('jobName').value = job.jobTitle;
+      document.getElementById('jobService').value = job.serviceType;
+      document.getElementById('jobStatus').value = job.status;
+      document.getElementById('jobPriority').value = job.priority;
+      document.getElementById('jobAssigned').value = job.assignedTo;
+      document.getElementById('jobDue').value = job.dueDate ? job.dueDate.slice(0,10) : '';
+      document.getElementById('jobBrief').value = job.brief;
+      openModal('jobModal');
+    }
+
+    function saveJob(event) {
+      event.preventDefault();
+
+      var data = {
+        studioJobId:document.getElementById('studioJobId').value,
+        clientId:document.getElementById('jobClientId').value,
+        jobTitle:document.getElementById('jobName').value,
+        serviceType:document.getElementById('jobService').value,
+        status:document.getElementById('jobStatus').value,
+        priority:document.getElementById('jobPriority').value,
+        assignedTo:document.getElementById('jobAssigned').value,
+        dueDate:document.getElementById('jobDue').value,
+        brief:document.getElementById('jobBrief').value
+      };
+
+      google.script.run
+        .withSuccessHandler(function(){closeModal('jobModal');toast('تم حفظ طلب الإنتاج.');loadData();})
+        .withFailureHandler(function(error){toast(errorText(error),true);})
+        .studioSaveJob(data);
+    }
+
+    function openAssetModal() {
+      if (!state.jobs.length) {
+        toast('أضف طلب إنتاج أولًا قبل ربط ملف.',true);
+        return;
+      }
+
+      document.querySelector('#assetModal form').reset();
+      document.getElementById('assetVersion').value = 'v1';
+      fillJobOptions();
+      openModal('assetModal');
+    }
+
+    function saveAsset(event) {
+      event.preventDefault();
+
+      var data = {
+        studioJobId:document.getElementById('assetJobId').value,
+        assetName:document.getElementById('assetName').value,
+        assetType:document.getElementById('assetType').value,
+        version:document.getElementById('assetVersion').value,
+        status:document.getElementById('assetStatus').value,
+        driveUrl:document.getElementById('assetDriveUrl').value
+      };
+
+      google.script.run
+        .withSuccessHandler(function(){closeModal('assetModal');toast('تم حفظ الملف وربطه بطلب الإنتاج.');loadData();})
+        .withFailureHandler(function(error){toast(errorText(error),true);})
+        .studioSaveAsset(data);
+    }
+
+    function moveJob(jobId, newStatus) {
+      var job = state.jobs.find(function(item){return item.studioJobId === jobId;});
+      if (!job || job.status === newStatus) return;
+
+      var data = {
+        studioJobId:job.studioJobId,
+        clientId:job.clientId,
+        projectId:job.projectId,
+        jobTitle:job.jobTitle,
+        serviceType:job.serviceType,
+        status:newStatus,
+        priority:job.priority,
+        assignedTo:job.assignedTo,
+        brief:job.brief,
+        dueDate:job.dueDate ? job.dueDate.slice(0,10) : ''
+      };
+
+      google.script.run
+        .withSuccessHandler(function(){toast('تم نقل الطلب إلى المرحلة الجديدة.');loadData();})
+        .withFailureHandler(function(error){toast(errorText(error),true);loadData();})
+        .studioSaveJob(data);
+    }
+
+    document.querySelectorAll('.column').forEach(function(column) {
+      column.addEventListener('dragover', function(event){event.preventDefault();column.classList.add('over');});
+      column.addEventListener('dragleave', function(){column.classList.remove('over');});
+      column.addEventListener('drop', function(event){
+        event.preventDefault();
+        column.classList.remove('over');
+        moveJob(event.dataTransfer.getData('text/plain'),column.dataset.status);
+      });
+    });
+
+    document.addEventListener('dragstart', function(event) {
+      var card = event.target.closest('.job');
+      if (card) event.dataTransfer.setData('text/plain',card.dataset.id);
+    });
+
+    document.addEventListener('DOMContentLoaded',function(){loadClients();loadData();});
+  </script>
+</body>
+</html>

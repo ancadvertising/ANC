@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .tools {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    input, select {
+      padding: 11px 13px;
+      border: 1px solid #3b3b40;
+      border-radius: 8px;
+      outline: 0;
+      color: var(--text);
+      background: var(--panel);
+      font: inherit;
+    }
+
+    input { flex: 1; }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-header span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th {
+      color: var(--muted);
+      background: #1d1d20;
+      font-size: 11px;
+      font-weight: normal;
+    }
+
+    td {
+      max-width: 300px;
+      overflow: hidden;
+      font-size: 13px;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 13px;
+      color: #d8ff83;
+      background: #2b3d18;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .empty {
+      padding: 35px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      color: #ffb8b3;
+      background: #4b2020;
+      font-size: 13px;
+    }
+
+    @media (max-width: 700px) {
+      main { padding: 14px; }
+      .tools { flex-direction: column; }
+      input, select { width: 100%; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>سجل النشاط والتدقيق</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="tools">
+      <input id="search" placeholder="ابحث في العملية أو المستخدم أو الكيان...">
+      <select id="entityFilter">
+        <option value="">كل الكيانات</option>
+        <option value="CLIENT">العملاء</option>
+        <option value="PROJECT">المشروعات</option>
+        <option value="TASK">المهام</option>
+        <option value="EMPLOYEE">الموظفون</option>
+        <option value="TIMESHEET">ساعات العمل</option>
+        <option value="INVOICE">الفواتير</option>
+        <option value="PAYMENT">المدفوعات</option>
+        <option value="SYSTEM">النظام</option>
+      </select>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <strong>العمليات المسجلة</strong>
+        <span id="resultCount">0 عملية</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>المستخدم</th>
+              <th>العملية</th>
+              <th>الكيان</th>
+              <th>المعرّف</th>
+              <th>التفاصيل</th>
+            </tr>
+          </thead>
+          <tbody id="auditTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var auditEntries = [];
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function render() {
+      var searchTerm = document.getElementById('search').value
+        .trim()
+        .toLowerCase();
+
+      var entityType = document.getElementById('entityFilter').value;
+
+      var filtered = auditEntries.filter(function (entry) {
+        var searchable = [
+          entry['Timestamp'],
+          entry['Actor'],
+          entry['Action'],
+          entry['Entity Type'],
+          entry['Entity ID'],
+          entry['Details']
+        ].join(' ').toLowerCase();
+
+        return (!entityType || entry['Entity Type'] === entityType) &&
+          (!searchTerm || searchable.indexOf(searchTerm) !== -1);
+      });
+
+      document.getElementById('resultCount').textContent =
+        filtered.length + ' عملية';
+
+      document.getElementById('auditTable').innerHTML = filtered.length
+        ? filtered.map(function (entry) {
+          return '<tr>' +
+            '<td>' + escapeHtml(entry['Timestamp']) + '</td>' +
+            '<td>' + escapeHtml(entry['Actor']) + '</td>' +
+            '<td><span class="badge">' + escapeHtml(entry['Action']) + '</span></td>' +
+            '<td>' + escapeHtml(entry['Entity Type']) + '</td>' +
+            '<td>' + escapeHtml(entry['Entity ID']) + '</td>' +
+            '<td title="' + escapeHtml(entry['Details']) + '">' +
+              escapeHtml(entry['Details']) +
+            '</td>' +
+            '</tr>';
+        }).join('')
+        : '<tr><td colspan="6" class="empty">لا توجد عمليات مطابقة.</td></tr>';
+    }
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('entityFilter').addEventListener('change', render);
+
+    google.script.run
+      .withSuccessHandler(function (data) {
+        auditEntries = data;
+        render();
+      })
+      .withFailureHandler(function (error) {
+        var box = document.getElementById('message');
+        box.style.display = 'block';
+        box.textContent = error.message || String(error);
+      })
+      .getUiAuditData();
+  </script>
+</body>
+</html>

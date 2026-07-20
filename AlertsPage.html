@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+      --orange: #ffa940;
+      --red: #ff7168;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 25px;
+    }
+
+    .metric.danger strong { color: var(--red); }
+    .metric.warning strong { color: var(--orange); }
+    .metric.info strong { color: var(--lime); }
+
+    .panel {
+      overflow: hidden;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+    }
+
+    .alerts {
+      display: grid;
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .alert {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 16px;
+      background: var(--panel);
+    }
+
+    .alert-icon {
+      display: grid;
+      width: 35px;
+      height: 35px;
+      flex: 0 0 35px;
+      place-items: center;
+      border-radius: 9px;
+      font-weight: bold;
+    }
+
+    .alert-icon.danger {
+      color: #ffbab5;
+      background: #4b2020;
+    }
+
+    .alert-icon.warning {
+      color: #ffd69e;
+      background: #4e3518;
+    }
+
+    .alert-icon.info {
+      color: #d8ff83;
+      background: #2b3d18;
+    }
+
+    .alert-content {
+      flex: 1;
+    }
+
+    .alert-title {
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .alert-description {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .alert-date {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .empty {
+      padding: 28px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      color: #ffb8b3;
+      background: #4b2020;
+      font-size: 13px;
+    }
+
+    @media (max-width: 700px) {
+      .summary { grid-template-columns: 1fr; }
+      main { padding: 14px; }
+      .alert { align-items: flex-start; }
+      .alert-date { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>مركز التنبيهات</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="summary">
+      <article class="metric danger">
+        <span>مهام متأخرة</span>
+        <strong id="overdueTasksCount">0</strong>
+      </article>
+
+      <article class="metric warning">
+        <span>مهام خلال 7 أيام</span>
+        <strong id="upcomingTasksCount">0</strong>
+      </article>
+
+      <article class="metric info">
+        <span>فواتير مستحقة أو متأخرة</span>
+        <strong id="dueInvoicesCount">0</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>التنبيهات الحرجة</h2>
+      <div id="criticalAlerts" class="alerts"></div>
+    </section>
+
+    <section class="panel">
+      <h2>تنبيهات المتابعة</h2>
+      <div id="followUpAlerts" class="alerts"></div>
+    </section>
+  </main>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function normalizeDate(value) {
+      if (!value) return null;
+
+      var date = new Date(String(value).slice(0, 10) + 'T00:00:00');
+
+      return isNaN(date.getTime()) ? null : date;
+    }
+
+    function daysBetween(from, to) {
+      var oneDay = 24 * 60 * 60 * 1000;
+
+      return Math.floor(
+        (to.getTime() - from.getTime()) / oneDay
+      );
+    }
+
+    function alertHtml(alert) {
+      return '<article class="alert">' +
+        '<span class="alert-icon ' + alert.type + '">' + alert.icon + '</span>' +
+        '<div class="alert-content">' +
+          '<div class="alert-title">' + escapeHtml(alert.title) + '</div>' +
+          '<div class="alert-description">' + escapeHtml(alert.description) + '</div>' +
+        '</div>' +
+        '<span class="alert-date">' + escapeHtml(alert.date || '') + '</span>' +
+      '</article>';
+    }
+
+    function renderAlerts(elementId, alerts) {
+      document.getElementById(elementId).innerHTML = alerts.length
+        ? alerts.map(alertHtml).join('')
+        : '<div class="empty">لا توجد تنبيهات في هذه الفئة.</div>';
+    }
+
+    function render(data) {
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      var projects = data.projects.reduce(function (result, project) {
+        result[project['Project ID']] = project['Project Name'];
+        return result;
+      }, {});
+
+      var clients = data.clients.reduce(function (result, client) {
+        result[client['Client ID']] = client['Client Name'];
+        return result;
+      }, {});
+
+      var critical = [];
+      var followUp = [];
+
+      data.tasks.forEach(function (task) {
+        var dueDate = normalizeDate(task['Due Date']);
+
+        if (!dueDate || String(task['Status']) === 'DONE') return;
+
+        var remainingDays = daysBetween(today, dueDate);
+
+        if (remainingDays < 0) {
+          critical.push({
+            type: 'danger',
+            icon: '!',
+            title: 'مهمة متأخرة: ' + task['Task Name'],
+            description: 'المشروع: ' +
+              (projects[task['Project ID']] || task['Project ID']) +
+              ' — المسؤول: ' + (task['Assignee'] || 'غير محدد'),
+            date: 'متأخرة ' + Math.abs(remainingDays) + ' يوم'
+          });
+        } else if (remainingDays <= 7) {
+          followUp.push({
+            type: 'warning',
+            icon: '!',
+            title: 'مهمة قريبة من موعد التسليم: ' + task['Task Name'],
+            description: 'المشروع: ' +
+              (projects[task['Project ID']] || task['Project ID']) +
+              ' — الأولوية: ' + task['Priority'],
+            date: 'بعد ' + remainingDays + ' يوم'
+          });
+        }
+      });
+
+      data.invoices.forEach(function (invoice) {
+        var dueDate = normalizeDate(invoice['Due Date']);
+        var status = String(invoice['Status']);
+
+        if (!dueDate || status === 'PAID' || status === 'CANCELLED') return;
+
+        var remainingDays = daysBetween(today, dueDate);
+        var clientName = clients[invoice['Client ID']] || invoice['Client ID'];
+
+        if (remainingDays < 0) {
+          critical.push({
+            type: 'danger',
+            icon: '£',
+            title: 'فاتورة متأخرة: ' + invoice['Invoice Number'],
+            description: 'العميل: ' + clientName +
+              ' — الحالة: ' + status,
+            date: 'متأخرة ' + Math.abs(remainingDays) + ' يوم'
+          });
+        } else if (remainingDays <= 7) {
+          followUp.push({
+            type: 'warning',
+            icon: '£',
+            title: 'فاتورة تستحق قريبًا: ' + invoice['Invoice Number'],
+            description: 'العميل: ' + clientName +
+              ' — الحالة: ' + status,
+            date: 'بعد ' + remainingDays + ' يوم'
+          });
+        }
+      });
+
+      document.getElementById('overdueTasksCount').textContent =
+        critical.filter(function (item) {
+          return item.title.indexOf('مهمة') === 0;
+        }).length;
+
+      document.getElementById('upcomingTasksCount').textContent =
+        followUp.filter(function (item) {
+          return item.title.indexOf('مهمة') === 0;
+        }).length;
+
+      document.getElementById('dueInvoicesCount').textContent =
+        critical.concat(followUp).filter(function (item) {
+          return item.title.indexOf('فاتورة') !== -1;
+        }).length;
+
+      renderAlerts('criticalAlerts', critical);
+      renderAlerts('followUpAlerts', followUp);
+    }
+
+    google.script.run
+      .withSuccessHandler(render)
+      .withFailureHandler(function (error) {
+        var box = document.getElementById('message');
+        box.style.display = 'block';
+        box.textContent = error.message || String(error);
+      })
+      .getUiBootstrapData();
+  </script>
+</body>
+</html>

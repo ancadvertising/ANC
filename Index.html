@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --sidebar: #19191b;
+      --panel: #18181a;
+      --border: #2b2b2f;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+      --green: #17d26b;
+      --red: #ff7168;
+      --orange: #ffa940;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 245px 1fr;
+      gap: 14px;
+      min-height: 100vh;
+      padding: 14px;
+    }
+
+    aside {
+      display: flex;
+      flex-direction: column;
+      padding: 15px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background:
+        radial-gradient(circle at top right, #303034 0, transparent 42%),
+        var(--sidebar);
+    }
+
+    .brand {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 4px 4px 23px;
+      font-size: 17px;
+      font-weight: bold;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 25px;
+      height: 25px;
+      place-items: center;
+      border-radius: 50%;
+      color: #142000;
+      background: linear-gradient(135deg, #f8c5ad, #ff664e, #a8e830);
+    }
+
+    .section-label {
+      margin: 15px 6px 7px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .nav-item {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 2px 0;
+      padding: 10px;
+      border-radius: 9px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .nav-item:hover,
+    .nav-item.active {
+      color: #161616;
+      background: #f7f7f7;
+    }
+
+    .icon {
+      display: grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border-radius: 5px;
+      color: var(--lime);
+      background: #2b2d27;
+      font-size: 12px;
+    }
+
+    .nav-item.active .icon {
+      color: #152000;
+      background: var(--lime);
+    }
+
+    .footer {
+      margin-top: auto;
+      padding: 13px 4px 2px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    main {
+      min-width: 0;
+      padding: 5px 2px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 27px;
+    }
+
+    .refresh {
+      display: grid;
+      width: 39px;
+      height: 39px;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--panel);
+      font-size: 18px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      min-height: 143px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+
+    .metric.highlight {
+      background:
+        radial-gradient(circle at 42% -25%, #b7ef5d 0, #4e611b 29%, #202713 70%);
+    }
+
+    .metric-icon {
+      display: grid;
+      width: 31px;
+      height: 31px;
+      place-items: center;
+      border-radius: 8px;
+      color: #d9ff83;
+      background: rgba(255,255,255,.12);
+    }
+
+    .metric-label {
+      margin-top: 23px;
+      color: #d9d9dc;
+      font-size: 12px;
+    }
+
+    .metric-value {
+      margin-top: 6px;
+      font-size: 23px;
+      font-weight: bold;
+    }
+
+    .metric-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(300px, .85fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .badge {
+      padding: 5px 8px;
+      border-radius: 7px;
+      color: #d8ff83;
+      background: #2b3d18;
+      font-size: 10px;
+    }
+
+    .chart-wrap {
+      height: 315px;
+      padding: 12px 14px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .mini-card {
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: #202023;
+    }
+
+    .mini-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .mini-card strong {
+      display: block;
+      margin-top: 6px;
+      color: var(--lime);
+      font-size: 20px;
+    }
+
+    .status-list {
+      padding: 0 15px 12px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .status-row:last-child { border-bottom: 0; }
+
+    .status-row strong { color: var(--lime); }
+
+    .tables {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th {
+      color: var(--muted);
+      background: #1c1c1e;
+      font-size: 10px;
+      font-weight: normal;
+    }
+
+    td { font-size: 12px; }
+
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    #message {
+      display: none;
+      margin-bottom: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      color: #ffb8b3;
+      background: #4b2020;
+      font-size: 13px;
+    }
+
+    @media (max-width: 1150px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .dashboard-grid, .tables { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 800px) {
+      .app { grid-template-columns: 1fr; padding: 8px; }
+      aside { min-height: auto; }
+      .section-label, .footer { display: none; }
+      .nav-item { display: inline-flex; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <span class="brand-mark">A</span>
+        <span>ANC ERP</span>
+      </div>
+
+      <div class="section-label">الرئيسية</div>
+
+      <a class="nav-item active" href="?">
+        <span class="icon">▦</span>لوحة المؤشرات
+      </a>
+
+      <a class="nav-item" href="?page=crm">
+        <span class="icon">◉</span>العملاء والمشروعات
+      </a>
+
+      <a class="nav-item" href="?page=operations">
+        <span class="icon">✓</span>التشغيل والمهام
+      </a>
+
+      <div class="section-label">المالية</div>
+
+      <a class="nav-item" href="?page=finance">
+        <span class="icon">£</span>الفواتير والمدفوعات
+      </a>
+
+      <a class="nav-item" href="?page=profitability">
+        <span class="icon">%</span>المصروفات والربحية
+      </a>
+
+      <a class="nav-item" href="?page=documents">
+        <span class="icon">▤</span>مستندات الفواتير
+      </a>
+
+      <div class="section-label">المتابعة</div>
+
+      <a class="nav-item" href="?page=alerts">
+        <span class="icon">!</span>التنبيهات
+      </a>
+
+      <a class="nav-item" href="?page=reports">
+        <span class="icon">▥</span>التقارير
+      </a>
+
+      <a class="nav-item" href="?page=status">
+        <span class="icon">↻</span>تحديث الحالات
+      </a>
+
+      <a class="nav-item" href="?page=audit">
+        <span class="icon">◷</span>سجل النشاط
+      </a>
+
+      <div class="footer">
+        ANC Advertising<br>
+        Marketing Agency ERP — Release 0.1
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <h1>لوحة المؤشرات</h1>
+        <button class="refresh" onclick="refresh()" title="تحديث">↻</button>
+      </header>
+
+      <div id="message"></div>
+      <section id="metrics" class="metrics"></section>
+
+      <section class="dashboard-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <span class="panel-title">الأداء المالي لآخر 6 أشهر</span>
+            <span class="badge">إيرادات / مصروفات / تحصيل</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="financeChart"></canvas>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <span class="panel-title">مؤشرات التشغيل</span>
+          </div>
+
+          <div class="stats">
+            <div class="mini-card">
+              <span>الموظفون النشطون</span>
+              <strong id

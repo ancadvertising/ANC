@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+      --green: #17d26b;
+      --red: #ff7168;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .metric.highlight {
+      color: #172000;
+      background: linear-gradient(135deg, #a8e830, #668b12);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric.highlight span { color: #25350c; }
+
+    .metric strong {
+      display: block;
+      margin-top: 9px;
+      font-size: 23px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+    }
+
+    .panel-body { padding: 16px; }
+
+    form {
+      display: grid;
+      gap: 11px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #3b3b40;
+      border-radius: 7px;
+      outline: 0;
+      color: var(--text);
+      background: #111113;
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 7px;
+      padding: 11px;
+      cursor: pointer;
+      color: #142000;
+      background: var(--lime);
+      font: inherit;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .6;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: normal;
+      background: #1d1d20;
+    }
+
+    td { font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 13px;
+      color: #d8ff83;
+      background: #2b3d18;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    #message.success {
+      display: block;
+      color: #a8f7c3;
+      background: #173c28;
+    }
+
+    #message.error {
+      display: block;
+      color: #ffb8b3;
+      background: #4b2020;
+    }
+
+    @media (max-width: 800px) {
+      .summary, .grid {
+        grid-template-columns: 1fr;
+      }
+
+      main { padding: 14px; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>المالية والتحصيل</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="summary">
+      <article class="metric">
+        <span>إجمالي الفواتير</span>
+        <strong id="invoiceTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>إجمالي المدفوعات</span>
+        <strong id="paidTotal">0</strong>
+      </article>
+
+      <article class="metric highlight">
+        <span>الرصيد المستحق</span>
+        <strong id="outstandingTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>عدد الفواتير</span>
+        <strong id="invoiceCount">0</strong>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>إنشاء فاتورة</h2>
+
+        <div class="panel-body">
+          <form id="invoiceForm">
+            <label>العميل
+              <select id="invoiceClientId" name="clientId" required></select>
+            </label>
+
+            <label>المشروع
+              <select id="invoiceProjectId" name="projectId" required></select>
+            </label>
+
+            <label>تاريخ الإصدار
+              <input name="issueDate" type="date" required>
+            </label>
+
+            <label>تاريخ الاستحقاق
+              <input name="dueDate" type="date" required>
+            </label>
+
+            <label>قيمة الفاتورة قبل الضريبة
+              <input name="amount" type="number" min="1" step="0.01" required>
+            </label>
+
+            <label>قيمة الضريبة
+              <input name="taxAmount" type="number" min="0" step="0.01" value="0">
+            </label>
+
+            <label>العملة
+              <input name="currency" value="EGP" required>
+            </label>
+
+            <label>الحالة
+              <select name="status">
+                <option value="DRAFT">Draft</option>
+                <option value="ISSUED" selected>Issued</option>
+              </select>
+            </label>
+
+            <button type="submit">إنشاء الفاتورة</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>تسجيل دفعة</h2>
+
+        <div class="panel-body">
+          <form id="paymentForm">
+            <label>الفاتورة
+              <select id="paymentInvoiceId" name="invoiceId" required></select>
+            </label>
+
+            <label>تاريخ الدفع
+              <input name="paymentDate" type="date" required>
+            </label>
+
+            <label>المبلغ المدفوع
+              <input name="amount" type="number" min="1" step="0.01" required>
+            </label>
+
+            <label>طريقة الدفع
+              <select name="method" required>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="Cheque">Cheque</option>
+              </select>
+            </label>
+
+            <label>مرجع العملية
+              <input name="reference">
+            </label>
+
+            <label>العملة
+              <input name="currency" value="EGP" required>
+            </label>
+
+            <button type="submit">تسجيل الدفعة</button>
+          </form>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" style="margin-bottom:16px;">
+      <h2>الفواتير</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>رقم الفاتورة</th>
+              <th>الحالة</th>
+              <th>المبلغ</th>
+              <th>الضريبة</th>
+              <th>الإجمالي</th>
+              <th>تاريخ الاستحقاق</th>
+            </tr>
+          </thead>
+          <tbody id="invoicesTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>المدفوعات</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>رقم الدفعة</th>
+              <th>الفاتورة</th>
+              <th>المبلغ</th>
+              <th>الطريقة</th>
+              <th>تاريخ الدفع</th>
+              <th>المرجع</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var state = {};
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function money(value) {
+      return new Intl.NumberFormat('ar-EG', {
+        maximumFractionDigits: 2
+      }).format(Number(value || 0)) + ' EGP';
+    }
+
+    function today() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function showMessage(text, type) {
+      var box = document.getElementById('message');
+      box.textContent = text;
+      box.className = type;
+
+      setTimeout(function () {
+        box.style.display = 'none';
+      }, 5000);
+    }
+
+    function runServer(method, data) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (error) {
+            reject(new Error(error.message || String(error)));
+          })[method](data);
+      });
+    }
+
+    function formData(form) {
+      var result = {};
+
+      new FormData(form).forEach(function (value, key) {
+        result[key] = value;
+      });
+
+      return result;
+    }
+
+    function submitForm(form, method, successMessage) {
+      var button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+
+      runServer(method, formData(form))
+        .then(function () {
+          form.reset();
+          setDefaultDates();
+          showMessage(successMessage, 'success');
+          refresh();
+        })
+        .catch(function (error) {
+          showMessage(error.message, 'error');
+        })
+        .finally(function () {
+          button.disabled = false;
+        });
+    }
+
+    function renderSelect(elementId, records, idField, labelBuilder, placeholder) {
+      document.getElementById(elementId).innerHTML =
+        '<option value="">' + placeholder + '</option>' +
+        records.map(function (record) {
+          return '<option value="' + escapeHtml(record[idField]) + '">' +
+            escapeHtml(labelBuilder(record)) +
+            '</option>';
+        }).join('');
+    }
+
+    function renderSummary() {
+      var finance = state.dashboard.finance;
+
+      document.getElementById('invoiceTotal').textContent =
+        money(finance.invoiceTotal);
+
+      document.getElementById('paidTotal').textContent =
+        money(finance.paidTotal);
+
+      document.getElementById('outstandingTotal').textContent =
+        money(finance.outstandingBalance);
+
+      document.getElementById('invoiceCount').textContent =
+        finance.invoicesCount;
+    }
+
+    function renderForms() {
+      renderSelect(
+        'invoiceClientId',
+        state.clients,
+        'Client ID',
+        function (client) { return client['Client Name']; },
+        'اختر العميل'
+      );
+
+      renderSelect(
+        'invoiceProjectId',
+        state.projects,
+        'Project ID',
+        function (project) { return project['Project Name']; },
+        'اختر المشروع'
+      );
+
+      renderSelect(
+        'paymentInvoiceId',
+        state.invoices.filter(function (invoice) {
+          return String(invoice['Status']) !== 'PAID' &&
+            String(invoice['Status']) !== 'CANCELLED';
+        }),
+        'Invoice ID',
+        function (invoice) {
+          return invoice['Invoice Number'] + ' — ' + invoice['Status'];
+        },
+        'اختر الفاتورة'
+      );
+    }
+
+    function renderTables() {
+      document.getElementById('invoicesTable').innerHTML =
+        state.invoices.map(function (invoice) {
+          var total = Number(invoice['Amount'] || 0) +
+            Number(invoice['Tax Amount'] || 0);
+
+          return '<tr>' +
+            '<td>' + escapeHtml(invoice['Invoice Number']) + '</td>' +
+            '<td><span class="badge">' + escapeHtml(invoice['Status']) + '</span></td>' +
+            '<td>' + money(invoice['Amount']) + '</td>' +
+            '<td>' + money(invoice['Tax Amount']) + '</td>' +
+            '<td>' + money(total) + '</td>' +
+            '<td>' + escapeHtml(invoice['Due Date']) + '</td>' +
+            '</tr>';
+        }).join('');
+
+      var invoiceNumbers = state.invoices.reduce(function (result, invoice) {
+        result[invoice['Invoice ID']] = invoice['Invoice Number'];
+        return result;
+      }, {});
+
+      document.getElementById('paymentsTable').innerHTML =
+        state.payments.map(function (payment) {
+          return '<tr>' +
+            '<td>' + escapeHtml(payment['Payment ID']) + '</td>' +
+            '<td>' + escapeHtml(
+              invoiceNumbers[payment['Invoice ID']] || payment['Invoice ID']
+            ) + '</td>' +
+            '<td>' + money(payment['Amount']) + '</td>' +
+            '<td>' + escapeHtml(payment['Method']) + '</td>' +
+            '<td>' + escapeHtml(payment['Payment Date']) + '</td>' +
+            '<td>' + escapeHtml(payment['Reference']) + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function setDefaultDates() {
+      document.querySelectorAll('input[type="date"]').forEach(function (input) {
+        if (!input.value) input.value = today();
+      });
+    }
+
+    function renderAll() {
+      renderSummary();
+      renderForms();
+      renderTables();
+      setDefaultDates();
+    }
+
+    function refresh() {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state = data;
+          renderAll();
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+        })
+        .getUiFinanceData();
+    }
+
+    document.getElementById('invoiceForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitForm(this, 'uiCreateInvoice', 'تم إنشاء الفاتورة بنجاح.');
+    });
+
+    document.getElementById('paymentForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitForm(this, 'uiCreatePayment', 'تم تسجيل الدفعة وتحديث حالة الفاتورة.');
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

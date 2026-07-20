@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 800px;
+      margin: auto;
+      padding: 40px 24px;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 17px;
+      border-bottom: 1px solid var(--border);
+      font-size: 17px;
+    }
+
+    form {
+      display: grid;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    select {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid #3b3b40;
+      border-radius: 8px;
+      outline: 0;
+      color: var(--text);
+      background: #111113;
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      color: #142000;
+      background: var(--lime);
+      font: inherit;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .65;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    #message.success {
+      display: block;
+      color: #a8f7c3;
+      background: #173c28;
+    }
+
+    #message.error {
+      display: block;
+      color: #ffb8b3;
+      background: #4b2020;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>تحديث الحالات</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="panel">
+      <h2>تغيير حالة سجل</h2>
+
+      <form id="statusForm">
+        <label>نوع السجل
+          <select id="entityType" name="type" required>
+            <option value="PROJECT">مشروع</option>
+            <option value="TASK">مهمة</option>
+            <option value="INVOICE">فاتورة</option>
+          </select>
+        </label>
+
+        <label>السجل
+          <select id="entityId" name="id" required></select>
+        </label>
+
+        <label>الحالة الجديدة
+          <select id="status" name="status" required></select>
+        </label>
+
+        <button type="submit">حفظ الحالة الجديدة</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    var data = {};
+
+    var statuses = {
+      PROJECT: [
+        'DRAFT',
+        'ACTIVE',
+        'ON_HOLD',
+        'COMPLETED',
+        'CANCELLED'
+      ],
+      TASK: [
+        'TODO',
+        'IN_PROGRESS',
+        'IN_REVIEW',
+        'DONE',
+        'BLOCKED'
+      ],
+      INVOICE: [
+        'DRAFT',
+        'ISSUED',
+        'PARTIALLY_PAID',
+        'PAID',
+        'CANCELLED'
+      ]
+    };
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function showMessage(text, type) {
+      var box = document.getElementById('message');
+      box.textContent = text;
+      box.className = type;
+
+      setTimeout(function () {
+        box.style.display = 'none';
+      }, 5000);
+    }
+
+    function entityRecords(type) {
+      if (type === 'PROJECT') return data.projects || [];
+      if (type === 'TASK') return data.tasks || [];
+      if (type === 'INVOICE') return data.invoices || [];
+      return [];
+    }
+
+    function renderSelectors() {
+      var type = document.getElementById('entityType').value;
+      var records = entityRecords(type);
+
+      document.getElementById('entityId').innerHTML =
+        records.map(function (record) {
+          return '<option value="' + escapeHtml(record.id) + '">' +
+            escapeHtml(record.name) + ' — ' +
+            escapeHtml(record.status) +
+            '</option>';
+        }).join('');
+
+      document.getElementById('status').innerHTML =
+        statuses[type].map(function (status) {
+          return '<option value="' + status + '">' +
+            status +
+            '</option>';
+        }).join('');
+    }
+
+    function refresh() {
+      google.script.run
+        .withSuccessHandler(function (response) {
+          data = response;
+          renderSelectors();
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+        })
+        .getUiStatusData();
+    }
+
+    document.getElementById('entityType').addEventListener('change', renderSelectors);
+
+    document.getElementById('statusForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      var button = this.querySelector('button');
+      button.disabled = true;
+
+      var payload = {
+        type: document.getElementById('entityType').value,
+        id: document.getElementById('entityId').value,
+        status: document.getElementById('status').value
+      };
+
+      google.script.run
+        .withSuccessHandler(function () {
+          showMessage('تم تحديث الحالة بنجاح.', 'success');
+          refresh();
+          button.disabled = false;
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+          button.disabled = false;
+        })
+        .uiUpdateEntityStatus(payload);
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

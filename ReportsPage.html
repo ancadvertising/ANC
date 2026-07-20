@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --bg: #0c0c0d;
+      --panel: #18181a;
+      --border: #29292d;
+      --text: #f7f7f8;
+      --muted: #a4a4ab;
+      --lime: #a8e830;
+      --green: #17d26b;
+      --orange: #ffa940;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      background: #121214;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      color: var(--lime);
+      font-size: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+    }
+
+    .chart {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 80px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .bar-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #2b2b2f;
+    }
+
+    .bar {
+      height: 100%;
+      border-radius: 8px;
+      background: linear-gradient(90deg, #547900, var(--lime));
+    }
+
+    .bar-value {
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th {
+      color: var(--muted);
+      background: #1d1d20;
+      font-size: 11px;
+      font-weight: normal;
+    }
+
+    td { font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 13px;
+      color: #d8ff83;
+      background: #2b3d18;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      color: #ffb8b3;
+      background: #4b2020;
+      font-size: 13px;
+    }
+
+    @media (max-width: 850px) {
+      .summary, .grid {
+        grid-template-columns: 1fr;
+      }
+
+      main { padding: 14px; }
+      .bar-row { grid-template-columns: 90px 1fr 65px; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>التقارير الإدارية</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <section class="summary">
+      <article class="metric">
+        <span>إجمالي الفواتير</span>
+        <strong id="invoiceTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>إجمالي المدفوعات</span>
+        <strong id="paidTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>المبالغ المستحقة</span>
+        <strong id="outstandingTotal">0</strong>
+      </article>
+
+      <article class="metric">
+        <span>نسبة إنجاز المهام</span>
+        <strong id="completionRate">0%</strong>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>أداء العملاء حسب قيمة الفواتير</h2>
+        <div id="clientChart" class="chart"></div>
+      </article>
+
+      <article class="panel">
+        <h2>ساعات العمل المعتمدة لكل موظف</h2>
+        <div id="employeeChart" class="chart"></div>
+      </article>
+    </section>
+
+    <section class="panel" style="margin-bottom:16px;">
+      <h2>ملخص المشروعات</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th>الحالة</th>
+              <th>المهام</th>
+              <th>المهام المكتملة</th>
+              <th>نسبة الإنجاز</th>
+              <th>الميزانية</th>
+            </tr>
+          </thead>
+          <tbody id="projectsTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>حالة الفواتير</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الحالة</th>
+              <th>عدد الفواتير</th>
+            </tr>
+          </thead>
+          <tbody id="invoiceStatusesTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function money(value) {
+      return new Intl.NumberFormat('ar-EG', {
+        maximumFractionDigits: 2
+      }).format(Number(value || 0)) + ' EGP';
+    }
+
+    function showError(message) {
+      var box = document.getElementById('message');
+      box.style.display = 'block';
+      box.textContent = message;
+    }
+
+    function createBarChart(elementId, items, labelField, valueField, formatter) {
+      var element = document.getElementById(elementId);
+      var maximum = Math.max.apply(null, items.map(function (item) {
+        return Number(item[valueField]) || 0;
+      }).concat([1]));
+
+      if (!items.length) {
+        element.innerHTML = '<span style="color:#a4a4ab">لا توجد بيانات بعد.</span>';
+        return;
+      }
+
+      element.innerHTML = items.map(function (item) {
+        var width = (Number(item[valueField]) || 0) / maximum * 100;
+
+        return '<div class="bar-row">' +
+          '<span>' + escapeHtml(item[labelField]) + '</span>' +
+          '<div class="bar-track"><div class="bar" style="width:' + width + '%"></div></div>' +
+          '<span class="bar-value">' + formatter(item[valueField]) + '</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    function render(data) {
+      var dashboard = data.dashboard;
+      var finance = dashboard.finance;
+
+      document.getElementById('invoiceTotal').textContent = money(finance.invoiceTotal);
+      document.getElementById('paidTotal').textContent = money(finance.paidTotal);
+      document.getElementById('outstandingTotal').textContent = money(finance.outstandingBalance);
+
+      var completedTasks = data.tasks.filter(function (task) {
+        return String(task['Status']) === 'DONE';
+      }).length;
+
+      var completionRate = data.tasks.length
+        ? Math.round(completedTasks / data.tasks.length * 100)
+        : 0;
+
+      document.getElementById('completionRate').textContent = completionRate + '%';
+
+      var clientNames = data.clients.reduce(function (result, client) {
+        result[client['Client ID']] = client['Client Name'];
+        return result;
+      }, {});
+
+      var clientTotals = data.invoices.reduce(function (result, invoice) {
+        var id = invoice['Client ID'];
+        result[id] = (result[id] || 0) +
+          Number(invoice['Amount'] || 0) +
+          Number(invoice['Tax Amount'] || 0);
+        return result;
+      }, {});
+
+      var clientData = Object.keys(clientTotals).map(function (clientId) {
+        return {
+          name: clientNames[clientId] || clientId,
+          total: clientTotals[clientId]
+        };
+      }).sort(function (a, b) {
+        return b.total - a.total;
+      });
+
+      createBarChart(
+        'clientChart',
+        clientData,
+        'name',
+        'total',
+        money
+      );
+
+      var employeeNames = data.employees.reduce(function (result, employee) {
+        result[employee['Employee ID']] = employee['Full Name'];
+        return result;
+      }, {});
+
+      var employeeHours = data.timesheets
+        .filter(function (timesheet) {
+          return String(timesheet['Approval Status']) === 'APPROVED';
+        })
+        .reduce(function (result, timesheet) {
+          var id = timesheet['Employee ID'];
+          result[id] = (result[id] || 0) + Number(timesheet['Hours'] || 0);
+          return result;
+        }, {});
+
+      var employeeData = Object.keys(employeeHours).map(function (employeeId) {
+        return {
+          name: employeeNames[employeeId] || employeeId,
+          hours: employeeHours[employeeId]
+        };
+      }).sort(function (a, b) {
+        return b.hours - a.hours;
+      });
+
+      createBarChart(
+        'employeeChart',
+        employeeData,
+        'name',
+        'hours',
+        function (value) { return value + ' ساعة'; }
+      );
+
+      var tasksByProject = data.tasks.reduce(function (result, task) {
+        var id = task['Project ID'];
+
+        if (!result[id]) {
+          result[id] = { total: 0, done: 0 };
+        }
+
+        result[id].total += 1;
+
+        if (String(task['Status']) === 'DONE') {
+          result[id].done += 1;
+        }
+
+        return result;
+      }, {});
+
+      document.getElementById('projectsTable').innerHTML =
+        data.projects.map(function (project) {
+          var stats = tasksByProject[project['Project ID']] || {
+            total: 0,
+            done: 0
+          };
+
+          var rate = stats.total
+            ? Math.round(stats.done / stats.total * 100)
+            : 0;
+
+          return '<tr>' +
+            '<td>' + escapeHtml(project['Project Name']) + '</td>' +
+            '<td><span class="badge">' + escapeHtml(project['Status']) + '</span></td>' +
+            '<td>' + stats.total + '</td>' +
+            '<td>' + stats.done + '</td>' +
+            '<td>' + rate + '%</td>' +
+            '<td>' + money(project['Budget']) + '</td>' +
+            '</tr>';
+        }).join('');
+
+      document.getElementById('invoiceStatusesTable').innerHTML =
+        Object.keys(finance.invoicesByStatus).map(function (status) {
+          return '<tr>' +
+            '<td><span class="badge">' + escapeHtml(status) + '</span></td>' +
+            '<td>' + finance.invoicesByStatus[status] + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    google.script.run
+      .withSuccessHandler(render)
+      .withFailureHandler(function (error) {
+        showError(error.message || String(error));
+      })
+      .getUiBootstrapData();
+  </script>
+</body>
+</html>

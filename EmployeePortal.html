@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#0b0c0d;color:#f5f6f8;font-family:Arial,Tahoma,sans-serif}
+    main{max-width:1100px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+    .card{padding:18px;border:1px solid #303238;border-radius:15px;background:#18191c;margin-bottom:16px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}.task{padding:14px;border:1px solid #303238;border-radius:11px;background:#202125;margin:9px 0}
+    button,input,textarea,select{padding:10px;border-radius:8px;border:1px solid #36383d;background:#101114;color:#fff;font:inherit}
+    button{background:#b8f83b;color:#172000;border:0;font-weight:bold;cursor:pointer}.muted{color:#a0a4ab}.tag{color:#d7fb9c;font-size:12px}
+    @media(max-width:700px){main{padding:14px}.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main>
+    <header class="top">
+      <div><h1 id="name">مساحة عمل الموظف</h1><p class="muted" id="role"></p></div>
+      <button onclick="location.reload()">تحديث</button>
+    </header>
+
+    <section class="grid" id="stats"></section>
+
+    <section class="card">
+      <h2>مهامي التنفيذية</h2>
+      <div id="tasks">جارٍ التحميل...</div>
+    </section>
+
+    <section class="card">
+      <h2>إضافة تحديث تنفيذ</h2>
+      <form id="form">
+        <select id="taskId" required></select>
+        <input id="progress" type="number" min="0" max="100" value="0" required>
+        <textarea id="details" placeholder="تفاصيل ما تم إنجازه" required></textarea>
+        <input id="url" type="url" placeholder="رابط التسليم من Google Drive">
+        <button>حفظ التحديث</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    var tasks = [];
+
+    function escapeHtml(value) {
+      var node = document.createElement('div');
+      node.textContent = value || '';
+      return node.innerHTML;
+    }
+
+    function render(data) {
+      tasks = data.tasks || [];
+      document.getElementById('name').textContent = data.profile.fullName || 'مساحة عمل الموظف';
+      document.getElementById('role').textContent = data.profile.role || '';
+
+      document.getElementById('stats').innerHTML =
+        '<article class="card">إجمالي المهام<br><b>' + data.summary.tasksCount + '</b></article>' +
+        '<article class="card">مهام نشطة<br><b>' + data.summary.activeTasksCount + '</b></article>' +
+        '<article class="card">طلبات الاستوديو<br><b>' + data.summary.studioJobsCount + '</b></article>';
+
+      document.getElementById('tasks').innerHTML = tasks.length
+        ? tasks.map(function(task) {
+            return '<article class="task"><b>' + escapeHtml(task.taskName) +
+              '</b><p class="muted">' + escapeHtml(task.description) +
+              '</p><span class="tag">' + escapeHtml(task.status) +
+              ' · ' + escapeHtml(task.priority) + '</span></article>';
+          }).join('')
+        : '<p class="muted">لا توجد مهام مسندة إليك.</p>';
+
+      document.getElementById('taskId').innerHTML = tasks.map(function(task) {
+        return '<option value="' + escapeHtml(task.taskId) + '">' +
+          escapeHtml(task.taskName) + '</option>';
+      }).join('');
+    }
+
+    function load() {
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(function(error) {
+          document.getElementById('tasks').textContent = error.message;
+        })
+        .portalGetEmployeeDashboard();
+    }
+
+    document.getElementById('form').addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      google.script.run
+        .withSuccessHandler(function() {
+          alert('تم حفظ تحديث التنفيذ.');
+          event.target.reset();
+          load();
+        })
+        .withFailureHandler(function(error) {
+          alert(error.message);
+        })
+        .portalAddEmployeeUpdate({
+          taskId: document.getElementById('taskId').value,
+          progressPercent: document.getElementById('progress').value,
+          progressDetails: document.getElementById('details').value,
+          deliveryUrl: document.getElementById('url').value
+        });
+    });
+
+    load();
+  </script>
+</body>
+</html>

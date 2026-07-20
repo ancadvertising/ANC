@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: #f7f7f8;
+      background: #0c0c0d;
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+      border-bottom: 1px solid #29292d;
+      background: #121214;
+    }
+
+    h1 { margin: 0; font-size: 24px; }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .back {
+      padding: 10px 14px;
+      border: 1px solid #29292d;
+      border-radius: 8px;
+      background: #18181a;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 650px;
+      margin: auto;
+      padding: 50px 24px;
+    }
+
+    .panel {
+      padding: 22px;
+      border: 1px solid #29292d;
+      border-radius: 14px;
+      background: #18181a;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      color: #a4a4ab;
+      font-size: 13px;
+    }
+
+    select, button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    select {
+      margin-bottom: 14px;
+      border: 1px solid #3b3b40;
+      color: #f7f7f8;
+      background: #111113;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      color: #142000;
+      background: #a8e830;
+      font-weight: bold;
+    }
+
+    button.secondary {
+      margin-top: 10px;
+      color: #f7f7f8;
+      background: #303034;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .65;
+    }
+
+    #message {
+      display: none;
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    #message.success {
+      display: block;
+      color: #a8f7c3;
+      background: #173c28;
+    }
+
+    #message.error {
+      display: block;
+      color: #ffb8b3;
+      background: #4b2020;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>مستندات الفواتير</h1>
+    <a class="back" href="?">← لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <section class="panel">
+      <label>اختر الفاتورة
+        <select id="invoiceId"></select>
+      </label>
+
+      <button id="pdfButton" onclick="generatePdf()">
+        إنشاء PDF وحفظه في Google Drive
+      </button>
+
+      <button id="emailButton" class="secondary" onclick="sendEmail()">
+        إرسال PDF إلى بريد العميل
+      </button>
+
+      <div id="message"></div>
+    </section>
+  </main>
+
+  <script>
+    function showMessage(content, type) {
+      var box = document.getElementById('message');
+      box.innerHTML = content;
+      box.className = type;
+    }
+
+    function selectedInvoiceId() {
+      return document.getElementById('invoiceId').value;
+    }
+
+    function withInvoice(method, buttonId, successHandler) {
+      var invoiceId = selectedInvoiceId();
+
+      if (!invoiceId) {
+        showMessage('اختر فاتورة أولًا.', 'error');
+        return;
+      }
+
+      var button = document.getElementById(buttonId);
+      button.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          successHandler(result);
+          button.disabled = false;
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+          button.disabled = false;
+        })[method](invoiceId);
+    }
+
+    function generatePdf() {
+      withInvoice(
+        'uiGenerateInvoicePdf',
+        'pdfButton',
+        function (result) {
+          showMessage(
+            'تم إنشاء الملف: <a href="' +
+            result.fileUrl +
+            '" target="_blank" style="text-decoration:underline">فتح PDF</a>',
+            'success'
+          );
+        }
+      );
+    }
+
+    function sendEmail() {
+      withInvoice(
+        'uiSendInvoiceEmail',
+        'emailButton',
+        function (result) {
+          showMessage(
+            'تم إرسال الفاتورة إلى: <strong>' +
+            result.recipient +
+            '</strong><br><a href="' +
+            result.fileUrl +
+            '" target="_blank" style="text-decoration:underline">فتح PDF المرفق</a>',
+            'success'
+          );
+        }
+      );
+    }
+
+    google.script.run
+      .withSuccessHandler(function (invoices) {
+        document.getElementById('invoiceId').innerHTML =
+          '<option value="">اختر فاتورة</option>' +
+          invoices.map(function (invoice) {
+            return '<option value="' + invoice.id + '">' +
+              invoice.number + ' — ' + invoice.status +
+              '</option>';
+          }).join('');
+      })
+      .withFailureHandler(function (error) {
+        showMessage(error.message || String(error), 'error');
+      })
+      .getUiInvoiceDocumentsData();
+  </script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --primary: #173f67;
+      --primary-dark: #102d4a;
+      --accent: #18a06f;
+      --background: #f4f7fb;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--background);
+      font-family: Arial, Tahoma, sans-serif;
+    }
+
+    header {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 28px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 23px;
+    }
+
+    header a {
+      padding: 9px 13px;
+      border-radius: 7px;
+      color: var(--primary);
+      background: #fff;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 16px;
+      cursor: pointer;
+      color: var(--primary);
+      background: #fff;
+      font-weight: bold;
+    }
+
+    .tab.active {
+      color: #fff;
+      background: var(--primary);
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px 18px;
+      color: var(--primary);
+      font-size: 17px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-body { padding: 18px; }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      font: inherit;
+      background: #fff;
+    }
+
+    textarea { min-height: 75px; }
+
+    button {
+      border: 0;
+      border-radius: 7px;
+      padding: 10px 13px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: bold;
+    }
+
+    button.submit {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    button.approve {
+      color: #075d41;
+      background: #dcfce7;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .65;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 12px;
+    }
+
+    td { font-size: 13px; }
+
+    .status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 16px;
+      color: #075d41;
+      background: #dcfce7;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    #message {
+      display: none;
+      margin-bottom: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+
+    #message.success {
+      display: block;
+      color: #075d41;
+      background: #dcfce7;
+    }
+
+    #message.error {
+      display: block;
+      color: #8a1717;
+      background: #fee2e2;
+    }
+
+    @media (max-width: 600px) {
+      header { padding: 18px; }
+      main { padding: 14px; }
+      .tab { flex: 1 1 40%; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>تشغيل الوكالة</h1>
+    <a href="?">لوحة المؤشرات</a>
+  </header>
+
+  <main>
+    <div id="message"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-view="tasks">المهام</button>
+      <button class="tab" data-view="employees">الموظفون</button>
+      <button class="tab" data-view="timesheets">ساعات العمل</button>
+    </div>
+
+    <section id="tasks" class="view active">
+      <div class="grid">
+        <div class="panel">
+          <h2>إضافة مهمة</h2>
+          <div class="panel-body">
+            <form id="taskForm">
+              <label>المشروع
+                <select id="taskProjectId" name="projectId" required></select>
+              </label>
+
+              <label>اسم المهمة
+                <input name="taskName" required>
+              </label>
+
+              <label>الحالة
+                <select name="status">
+                  <option value="TODO">To Do</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="IN_REVIEW">In Review</option>
+                  <option value="DONE">Done</option>
+                </select>
+              </label>
+
+              <label>الأولوية
+                <select name="priority">
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM" selected>Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="URGENT">Urgent</option>
+                </select>
+              </label>
+
+              <label>المسؤول
+                <input name="assignee">
+              </label>
+
+              <label>الساعات المتوقعة
+                <input name="estimatedHours" type="number" min="0" value="0">
+              </label>
+
+              <label>تاريخ التسليم
+                <input name="dueDate" type="date">
+              </label>
+
+              <button class="submit" type="submit">حفظ المهمة</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>المهام الحالية</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>المهمة</th>
+                  <th>الحالة</th>
+                  <th>المسؤول</th>
+                  <th>الساعات</th>
+                </tr>
+              </thead>
+              <tbody id="tasksTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="employees" class="view">
+      <div class="grid">
+        <div class="panel">
+          <h2>إضافة موظف</h2>
+          <div class="panel-body">
+            <form id="employeeForm">
+              <label>الاسم الكامل
+                <input name="fullName" required>
+              </label>
+
+              <label>البريد الإلكتروني
+                <input name="email" type="email" required>
+              </label>
+
+              <label>الدور
+                <select name="role" required>
+                  <option value="ADMIN">Admin</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="ACCOUNT_MANAGER">Account Manager</option>
+                  <option value="FINANCE">Finance</option>
+                  <option value="HR">HR</option>
+                  <option value="CREATIVE">Creative</option>
+                  <option value="VIEWER">Viewer</option>
+                </select>
+              </label>
+
+              <label>القسم
+                <input name="department">
+              </label>
+
+              <label>تاريخ البدء
+                <input name="startDate" type="date">
+              </label>
+
+              <button class="submit" type="submit">حفظ الموظف</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>الموظفون</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>الاسم</th>
+                  <th>البريد</th>
+                  <th>الدور</th>
+                  <th>القسم</th>
+                </tr>
+              </thead>
+              <tbody id="employeesTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="timesheets" class="view">
+      <div class="grid">
+        <div class="panel">
+          <h2>تسجيل ساعات عمل</h2>
+          <div class="panel-body">
+            <form id="timesheetForm">
+              <label>الموظف
+                <select id="timesheetEmployeeId" name="employeeId" required></select>
+              </label>
+
+              <label>المشروع
+                <select id="timesheetProjectId" name="projectId" required></select>
+              </label>
+
+              <label>المهمة
+                <select id="timesheetTaskId" name="taskId"></select>
+              </label>
+
+              <label>تاريخ العمل
+                <input name="workDate" type="date" required>
+              </label>
+
+              <label>عدد الساعات
+                <input name="hours" type="number" min="0.25" max="24" step="0.25" required>
+              </label>
+
+              <label>الوصف
+                <textarea name="description"></textarea>
+              </label>
+
+              <button class="submit" type="submit">تسجيل الساعات</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>ساعات العمل</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>الموظف</th>
+                  <th>التاريخ</th>
+                  <th>الساعات</th>
+                  <th>الحالة</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody id="timesheetsTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    var state = {};
+
+    function escapeHtml(value) {
+      return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function showMessage(text, type) {
+      var message = document.getElementById('message');
+      message.textContent = text;
+      message.className = type;
+
+      setTimeout(function () {
+        message.style.display = 'none';
+      }, 5000);
+    }
+
+    function runServer(method, data) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (error) {
+            reject(new Error(error.message || String(error)));
+          })[method](data);
+      });
+    }
+
+    function getFormData(form) {
+      var payload = {};
+
+      new FormData(form).forEach(function (value, key) {
+        payload[key] = value;
+      });
+
+      return payload;
+    }
+
+    function submitForm(form, method, successMessage) {
+      var button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+
+      runServer(method, getFormData(form))
+        .then(function () {
+          form.reset();
+          showMessage(successMessage, 'success');
+          refresh();
+        })
+        .catch(function (error) {
+          showMessage(error.message, 'error');
+        })
+        .finally(function () {
+          button.disabled = false;
+        });
+    }
+
+    function renderSelect(elementId, records, idField, labelField, placeholder) {
+      document.getElementById(elementId).innerHTML =
+        '<option value="">' + placeholder + '</option>' +
+        records.map(function (record) {
+          return '<option value="' + escapeHtml(record[idField]) + '">' +
+            escapeHtml(record[labelField]) +
+            '</option>';
+        }).join('');
+    }
+
+    function renderTasks() {
+      renderSelect(
+        'taskProjectId',
+        state.projects,
+        'Project ID',
+        'Project Name',
+        'اختر المشروع'
+      );
+
+      renderSelect(
+        'timesheetTaskId',
+        state.tasks,
+        'Task ID',
+        'Task Name',
+        'بدون مهمة'
+      );
+
+      document.getElementById('tasksTable').innerHTML = state.tasks.map(function (task) {
+        return '<tr>' +
+          '<td>' + escapeHtml(task['Task Name']) + '</td>' +
+          '<td><span class="status">' + escapeHtml(task['Status']) + '</span></td>' +
+          '<td>' + escapeHtml(task['Assignee']) + '</td>' +
+          '<td>' + escapeHtml(task['Estimated Hours']) + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    function renderEmployees() {
+      renderSelect(
+        'timesheetEmployeeId',
+        state.employees,
+        'Employee ID',
+        'Full Name',
+        'اختر الموظف'
+      );
+
+      document.getElementById('employeesTable').innerHTML = state.employees.map(function (employee) {
+        return '<tr>' +
+          '<td>' + escapeHtml(employee['Full Name']) + '</td>' +
+          '<td>' + escapeHtml(employee['Email']) + '</td>' +
+          '<td>' + escapeHtml(employee['Role']) + '</td>' +
+          '<td>' + escapeHtml(employee['Department']) + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    function renderTimesheets() {
+      renderSelect(
+        'timesheetProjectId',
+        state.projects,
+        'Project ID',
+        'Project Name',
+        'اختر المشروع'
+      );
+
+      var employeeNames = state.employees.reduce(function (result, employee) {
+        result[employee['Employee ID']] = employee['Full Name'];
+        return result;
+      }, {});
+
+      document.getElementById('timesheetsTable').innerHTML =
+        state.timesheets.map(function (timesheet) {
+          var isPending = String(timesheet['Approval Status']) === 'PENDING';
+
+          return '<tr>' +
+            '<td>' + escapeHtml(employeeNames[timesheet['Employee ID']] || timesheet['Employee ID']) + '</td>' +
+            '<td>' + escapeHtml(timesheet['Work Date']) + '</td>' +
+            '<td>' + escapeHtml(timesheet['Hours']) + '</td>' +
+            '<td><span class="status">' + escapeHtml(timesheet['Approval Status']) + '</span></td>' +
+            '<td>' +
+              (isPending
+                ? '<button class="approve" onclick="approveTimesheet(\'' +
+                  escapeHtml(timesheet['Timesheet ID']) +
+                  '\')">اعتماد</button>'
+                : '') +
+            '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function renderAll() {
+      renderTasks();
+      renderEmployees();
+      renderTimesheets();
+    }
+
+    function refresh() {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state = data;
+          renderAll();
+        })
+        .withFailureHandler(function (error) {
+          showMessage(error.message || String(error), 'error');
+        })
+        .getUiOperationsData();
+    }
+
+    function approveTimesheet(timesheetId) {
+      runServer('uiApproveTimesheet', timesheetId)
+        .then(function () {
+          showMessage('تم اعتماد ساعات العمل.', 'success');
+          refresh();
+        })
+        .catch(function (error) {
+          showMessage(error.message, 'error');
+        });
+    }
+
+    document.querySelectorAll('.tab').forEach(function (button) {
+      button.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (tab) {
+          tab.classList.remove('active');
+        });
+
+        document.querySelectorAll('.view').forEach(function (view) {
+          view.classList.remove('active');
+        });
+
+        button.classList.add('active');
+        document.getElementById(button.dataset.view).classList.add('active');
+      });
+    });
+
+    document.getElementById('taskForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitForm(this, 'uiCreateTask', 'تمت إضافة المهمة بنجاح.');
+    });
+
+    document.getElementById('employeeForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitForm(this, 'uiCreateEmployee', 'تمت إضافة الموظف بنجاح.');
+    });
+
+    document.getElementById('timesheetForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitForm(this, 'uiCreateTimesheet', 'تم تسجيل ساعات العمل بنجاح.');
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
