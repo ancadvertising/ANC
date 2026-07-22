@@ -32,3 +32,6 @@
 ## التوصيل القادم
 
 سنضيف طبقة API في نفس المصدر تتعامل مع Apps Script Deployment تجريبي وقاعدة بيانات Sheets منفصلة، ثم نضيف Google Identity مع التحقق من البريد والصلاحيات في الخادم.
+## Extensionless route shells
+
+Cloudflare Pages previously served cached legacy extensionless files on routes such as `/ads` and `/studio`. The extensionless files in this directory intentionally mirror `index.html` so every direct SPA route replaces that legacy cache. Whenever `index.html` changes, copy it to the route shell names before deploying.

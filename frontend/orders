@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="dark">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#090a0c">
+    <meta name="color-scheme" content="dark light">
+    <meta name="description" content="نظام ANC لإدارة العملاء والمشروعات والطلبات والحسابات.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ANC ERP">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/assets/icon-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/assets/icon-192.png">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/legacy-modules.css">
+    <title>ANC ERP</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#page-content">الانتقال إلى المحتوى</a>
+
+    <div id="boot-screen" class="boot-screen" aria-live="polite">
+      <img src="/assets/logo-light.png" alt="ANC Advertising" width="240" height="92">
+      <div class="boot-pulse" aria-hidden="true"></div>
+      <p>جاري تجهيز مساحة العمل...</p>
+    </div>
+
+    <div id="app" class="app-shell" hidden>
+      <aside id="sidebar" class="sidebar" aria-label="القائمة الرئيسية">
+        <div class="brand-lockup">
+          <img class="brand-logo brand-logo-light" src="/assets/logo-light.png" alt="ANC Advertising">
+          <img class="brand-logo brand-logo-dark" src="/assets/logo-dark.png" alt="ANC Advertising">
+          <span class="stage-pill production-pill">LIVE</span>
+        </div>
+
+        <nav id="desktop-navigation" class="desktop-navigation"></nav>
+
+        <div class="sidebar-footer">
+          <div class="workspace-avatar" aria-hidden="true">A</div>
+          <div>
+            <strong>ANC ERP</strong>
+            <span id="sidebar-user-label">جاري التحقق من الحساب...</span>
+          </div>
+        </div>
+      </aside>
+
+      <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="إغلاق القائمة"></button>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="topbar-leading">
+            <button id="menu-button" class="icon-button mobile-only" type="button" aria-label="فتح القائمة" aria-controls="sidebar" aria-expanded="false"></button>
+            <div>
+              <p id="page-eyebrow" class="page-eyebrow">ANC ERP</p>
+              <h1 id="page-title">لوحة المؤشرات</h1>
+            </div>
+          </div>
+
+          <div class="topbar-actions">
+            <div class="signed-user" aria-label="المستخدم الحالي">
+              <span id="signed-user-avatar" class="signed-user-avatar" aria-hidden="true">A</span>
+              <span class="signed-user-copy"><strong id="signed-user-name">ANC ERP</strong><small id="signed-user-role">حساب Google موثّق</small></span>
+            </div>
+            <span id="connection-status" class="connection-status" role="status">
+              <span class="status-dot"></span>
+              <span class="connection-label">متصل</span>
+            </span>
+            <button id="install-button" class="soft-button" type="button" hidden>تثبيت التطبيق</button>
+            <button id="theme-button" class="icon-button" type="button" aria-label="تغيير المظهر"></button>
+            <button id="quick-add-button" class="primary-button" type="button">إضافة جديدة</button>
+            <button id="logout-button" class="soft-button" type="button">تسجيل الخروج</button>
+          </div>
+        </header>
+
+        <div id="page-content" class="page-content" tabindex="-1"></div>
+      </main>
+
+      <nav id="mobile-navigation" class="mobile-navigation" aria-label="التنقل السريع"></nav>
+
+      <section id="more-sheet" class="more-sheet" aria-hidden="true" aria-label="المزيد من الصفحات">
+        <div class="sheet-grabber" aria-hidden="true"></div>
+        <div class="sheet-heading">
+          <div>
+            <span>كل الأدوات</span>
+            <strong>انتقل إلى أي جزء في النظام</strong>
+          </div>
+          <button id="close-more-button" class="icon-button" type="button" aria-label="إغلاق"></button>
+        </div>
+        <nav id="more-navigation" class="more-navigation"></nav>
+      </section>
+      <button id="sheet-backdrop" class="sheet-backdrop" type="button" aria-label="إغلاق قائمة المزيد"></button>
+    </div>
+
+    <dialog id="entity-dialog" class="entity-dialog">
+      <form id="entity-form" method="dialog" novalidate>
+        <div class="dialog-header">
+          <div>
+            <p id="dialog-eyebrow" class="page-eyebrow">إضافة</p>
+            <h2 id="dialog-title">سجل جديد</h2>
+          </div>
+          <button id="dialog-close-button" class="icon-button" type="button" aria-label="إغلاق"></button>
+        </div>
+        <div id="dialog-fields" class="dialog-fields"></div>
+        <p id="form-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="dialog-cancel-button" class="ghost-button" type="button">إلغاء</button>
+          <button class="primary-button" type="submit">حفظ</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <section id="auth-gate" class="auth-gate" aria-live="polite">
+      <article class="auth-card">
+        <img class="auth-logo auth-logo-light" src="/assets/logo-light.png" alt="ANC Advertising">
+        <img class="auth-logo auth-logo-dark" src="/assets/logo-dark.png" alt="ANC Advertising">
+        <div id="auth-loading" class="auth-state">
+          <div class="boot-pulse" aria-hidden="true"></div>
+          <h1>جاري التحقق من حسابك</h1>
+          <p>نراجع جلسة Google والصلاحيات المسجلة قبل فتح مساحة العمل.</p>
+        </div>
+        <div id="auth-login" class="auth-state" hidden>
+          <span class="auth-kicker">ANC ERP</span>
+          <h1>تسجيل الدخول الآمن</h1>
+          <p>استخدم حساب Google المسجل لدى ANC. البريد غير المسجل أو الموقوف لن يستطيع فتح النظام.</p>
+          <div id="google-signin-button" class="google-signin-button"></div>
+          <p id="auth-login-message" class="auth-message" role="alert"></p>
+        </div>
+        <div id="auth-denied" class="auth-state" hidden>
+          <span class="auth-kicker auth-kicker-danger">الوصول مرفوض</span>
+          <h1>هذا الحساب غير مصرح له</h1>
+          <p id="auth-denied-message">البريد غير مسجل أو أن الحساب موقوف. تواصل مع المدير الأساسي.</p>
+          <button id="auth-retry-button" class="primary-button" type="button">المحاولة بحساب آخر</button>
+        </div>
+      </article>
+    </section>
+
+    <template id="metric-template">
+      <article class="metric-card">
+        <span class="metric-icon"></span>
+        <div>
+          <span class="metric-label"></span>
+          <strong class="metric-value"></strong>
+          <small class="metric-note"></small>
+        </div>
+      </article>
+    </template>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="/config.js"></script>
+    <script src="/api-client.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/ads.js"></script>
+    <script src="/js/studio.js"></script>
+    <script src="/js/operations.js"></script>
+    <script src="/js/finance.js"></script>
+    <script src="/js/reports.js"></script>
+    <script src="/js/users.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
