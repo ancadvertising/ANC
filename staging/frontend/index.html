@@ -56,6 +56,15 @@
           </div>
 
           <div class="topbar-actions">
+            <label class="role-preview-control" for="role-preview">
+              <span>معاينة الواجهة</span>
+              <select id="role-preview" aria-label="اختيار الدور التجريبي">
+                <option value="PRIMARY_MANAGER">المدير الأساسي</option>
+                <option value="ASSISTANT_MANAGER">المدير المساعد</option>
+                <option value="EMPLOYEE">الموظف</option>
+                <option value="CLIENT">العميل</option>
+              </select>
+            </label>
             <span id="connection-status" class="connection-status" role="status">
               <span class="status-dot"></span>
               <span class="connection-label">متصل</span>
@@ -67,8 +76,8 @@
         </header>
 
         <section class="stage-notice" aria-label="تنبيه نسخة الاختبار">
-          <strong>نسخة تصميم محلية</strong>
-          <span>بيانات العملاء والمشروعات في هذه المرحلة تُحفظ على هذا الجهاز فقط ولا تصل إلى حسابات الشركة.</span>
+          <strong>نسخة اختبار آمنة</strong>
+          <span id="stage-notice-copy">بيانات العملاء والمشروعات والموافقات تُحفظ على هذا الجهاز فقط. مبدّل الأدوار يحاكي الصلاحيات قبل توصيلها بالخادم.</span>
         </section>
 
         <div id="page-content" class="page-content" tabindex="-1"></div>
