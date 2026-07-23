@@ -445,6 +445,7 @@ function renderPage() {
   else if (currentRoute === 'projects' && currentRole === 'CLIENT') content.innerHTML = renderClientProjects();
   else if (currentRoute === 'projects') content.innerHTML = renderProjects();
   else if (currentRoute === 'approvals') content.innerHTML = renderApprovals();
+  else if (currentRoute === 'documents') renderLiveModule('documents');
   else if (currentRoute === 'tasks' && currentRole === 'EMPLOYEE') content.innerHTML = renderEmployeeTasks();
   else if (currentRole === 'CLIENT') content.innerHTML = renderClientModule(currentRoute);
   else if (currentRoute === 'tasks') renderLiveModule('operations');
@@ -453,6 +454,7 @@ function renderPage() {
   else if (currentRoute === 'finance' || currentRoute === 'banking') renderLiveModule('finance');
   else if (currentRoute === 'reports') renderLiveModule('reports');
   else if (currentRoute === 'employees') renderLiveModule('users');
+  else if (currentRoute === 'settings') renderLiveModule('settings');
   else content.innerHTML = renderModuleMap(currentRoute);
 }
 

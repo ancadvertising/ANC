@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'anc-erp-shell-v3.0.0';
+const CACHE_VERSION = 'anc-erp-shell-v3.1.0';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -13,6 +13,8 @@ const APP_SHELL = [
   '/js/finance.js',
   '/js/reports.js',
   '/js/users.js',
+  '/js/documents.js',
+  '/js/settings.js',
   '/app.js',
   '/manifest.webmanifest',
   '/offline.html',

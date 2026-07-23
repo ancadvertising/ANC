@@ -74,3 +74,29 @@
   .page-content .form-grid .wide { grid-column: auto; }
   .page-content .actions .btn { flex: 1; }
 }
+.table-actions { display: flex; align-items: center; gap: 7px; }
+.table-actions .btn { min-height: 36px; padding: 6px 10px; font-size: .78rem; white-space: nowrap; }
+.permission-group { margin-bottom: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); }
+.permission-group h3 { margin: 0 0 12px; }
+.permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.permission-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.permission-row span { display: grid; gap: 3px; }
+.permission-row small { color: var(--muted); font-size: .7rem; }
+.permission-row select { min-width: 105px; }
+.check-row { display: flex !important; align-items: center; gap: 9px; }
+.check-row input { width: 19px !important; min-height: 19px !important; }
+.settings-form { display: grid; gap: 18px; }
+.settings-section { margin-top: 0 !important; }
+.sticky-form-actions { position: sticky; z-index: 5; bottom: calc(var(--mobile-nav-height, 0px) + 12px); display: flex; justify-content: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface-strong) 92%, transparent); backdrop-filter: blur(16px); box-shadow: var(--shadow); }
+.invoice-preview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.invoice-preview-summary .metric { min-height: 96px; padding: 14px; }
+.document-form input[type=file] { padding: 9px; }
+.btn[disabled], .btn:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+
+@media (max-width: 760px) {
+  .permission-grid,
+  .invoice-preview-summary { grid-template-columns: 1fr; }
+  .permission-row { align-items: flex-start; flex-direction: column; }
+  .permission-row select { width: 100%; }
+  .table-actions { min-width: 210px; flex-wrap: wrap; }
+}

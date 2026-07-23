@@ -1,37 +1,24 @@
-# ANC ERP - Staging Frontend
+# ANC ERP Frontend
 
-واجهة منفصلة عن Google Apps Script، مخصصة للاختبار على Cloudflare Pages قبل دمج أي تحديث في الموقع الرسمي.
+واجهة عربية RTL سريعة وقابلة للتثبيت كتطبيق PWA، مستضافة على Cloudflare Pages.
 
-## الحدود الحالية
+## التشغيل
 
-- الواجهة تعمل كتطبيق PWA قابل للتثبيت.
-- التنقل داخلي ولا يعتمد على روابط `googleusercontent` أو `?page=`.
-- العملاء والمشروعات يعملان كتجربة UX محلية محفوظة في متصفح الجهاز.
-- يمكن للمدير الأساسي إنشاء السجلات وتعديلها وتغيير حالتها وأرشفتها واستعادتها.
-- تعديلات المدير المساعد تتحول إلى طلبات اعتماد ولا تُطبق قبل موافقة المدير الأساسي.
-- يتيح مبدّل الأدوار اختبار بوابة العميل ومساحة الموظف دون كشف البيانات المالية الداخلية.
-- لا توجد أي كتابة إلى Google Sheets في هذه المرحلة.
-- Apps Script سيظل مسؤولًا عن منطق الأعمال والبيانات بعد توصيل API الآمن.
+- المصادقة: Google Identity، ثم تحقق الخادم من البريد المسجل والدور والصلاحيات.
+- التنقل: SPA بمسارات ثابتة مثل `/finance` و`/ads` و`/settings`.
+- البيانات: جميع العمليات الحقيقية تمر عبر Cloudflare Worker المحدد في `config.js`.
+- التصميم: متجاوب للكمبيوتر والهاتف، ووضع داكن افتراضي.
 
-## المعاينة المحلية
+## الصفحات الحية
 
-يمكن تقديم هذا المجلد بأي خادم ملفات ثابت. لا تفتح `index.html` مباشرة عبر `file://` لأن Service Worker يحتاج HTTP أو HTTPS.
+لوحة المؤشرات، العملاء، المشاريع، الطلبات، الإعلانات، الاستوديو، المهام، المالية والبنوك، التقارير، المستندات، الموظفون، المستخدمون والصلاحيات، الاعتمادات، سجل النشاط، والإعدادات.
 
-## Cloudflare Pages Staging
+## مسارات Pages المباشرة
 
-أنشئ مشروع Pages تجريبيًا منفصلًا ومتصلًا بفرع `staging` في مستودع `ancadvertising/ANC`:
+الملفات بلا امتداد داخل هذا المجلد تتعمد مطابقة `index.html`. عند تعديل غلاف التطبيق يجب مزامنته مع جميع المسارات قبل النشر، وإلا قد يعرض Cloudflare نسخة قديمة أو شاشة فارغة عند فتح رابط مباشر.
 
-- Framework preset: None
-- Root directory: `staging/frontend`
-- Build command: اتركه فارغًا
-- Build output directory: `.`
-- Production branch للمشروع التجريبي: `staging`
+## النشر
 
-لا تغيّر إعدادات مشروع الإنتاج الحالي قبل نجاح اختبارات النسخة التجريبية.
-
-## التوصيل القادم
-
-سنضيف طبقة API في نفس المصدر تتعامل مع Apps Script Deployment تجريبي وقاعدة بيانات Sheets منفصلة، ثم نضيف Google Identity مع التحقق من البريد والصلاحيات في الخادم.
-## Extensionless route shells
-
-Cloudflare Pages previously served cached legacy extensionless files on routes such as `/ads` and `/studio`. The extensionless files in this directory intentionally mirror `index.html` so every direct SPA route replaces that legacy cache. Whenever `index.html` changes, copy it to the route shell names before deploying.
+```powershell
+wrangler pages deploy frontend --project-name anc-marketing-erp --branch main
+```
