@@ -1,3 +1,5 @@
+import { buildInvoicePdf } from './invoice-pdf.js';
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -46,7 +48,7 @@ __name(cors, "cors");
 // src/constants.js
 var APP = Object.freeze({
   name: "ANC Marketing Agency ERP",
-  version: "3.0.0",
+  version: "3.1.0",
   currency: "EGP",
   timezone: "Africa/Cairo"
 });
@@ -61,6 +63,18 @@ var DEFAULT_AD_SETTINGS = Object.freeze({
   "Minimum Profit Margin": "10",
   "Default Bank Account": "",
   "Allow Negative Bank Balance": "FALSE"
+});
+var DEFAULT_SYSTEM_SETTINGS = Object.freeze({
+  "Company Name": "ANC Advertising",
+  "Company Legal Name": "ANC Advertising For Advertising Solutions",
+  "Company Email": "anc.adv.agency@gmail.com",
+  "Company Phone": "+2010 9797 5454",
+  "Company Address": "Damanhour, Egypt",
+  "Invoice Prefix": "ANC",
+  "Invoice Tax Rate": "0",
+  "Payment Terms Days": "14",
+  "Invoice Footer": "This invoice excludes cancelled orders and cancelled services.",
+  "Default Currency": "EGP"
 });
 
 // src/lib/response.js
@@ -253,8 +267,8 @@ __name(verifyGoogleIdToken, "verifyGoogleIdToken");
 
 // src/auth/security.js
 var ROLE_RULES = Object.freeze({
-  MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT", "APPROVE"], ADS: ["VIEW", "CREATE", "EDIT", "APPROVE"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], STUDIO: ["VIEW", "CREATE", "EDIT"], USERS: ["VIEW", "CREATE", "EDIT", "APPROVE"], REPORTS: ["VIEW", "EXPORT"], PORTALS: ["VIEW"], APPROVALS: ["VIEW", "APPROVE"] },
-  ASSISTANT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], TASKS: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW"], FINANCE: ["VIEW"], STUDIO: ["VIEW"], USERS: ["VIEW"], REPORTS: ["VIEW"], PORTALS: ["VIEW"], APPROVALS: ["VIEW", "CREATE"] },
+  MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT", "APPROVE"], ADS: ["VIEW", "CREATE", "EDIT", "APPROVE"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], STUDIO: ["VIEW", "CREATE", "EDIT"], USERS: ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE"], REPORTS: ["VIEW", "EXPORT"], PORTALS: ["VIEW", "CREATE", "EDIT", "DELETE"], APPROVALS: ["VIEW", "APPROVE"], SYSTEM: ["VIEW", "EDIT"] },
+  ASSISTANT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], TASKS: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW"], FINANCE: ["VIEW"], STUDIO: ["VIEW"], USERS: ["VIEW"], REPORTS: ["VIEW"], PORTALS: ["VIEW"], APPROVALS: ["VIEW", "CREATE"], SYSTEM: ["VIEW"] },
   ACCOUNT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT"], ADS: ["VIEW", "CREATE", "EDIT"], STUDIO: ["VIEW", "CREATE", "EDIT"], PORTALS: ["VIEW"] },
   FINANCE: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], REPORTS: ["VIEW", "EXPORT", "PRINT"] },
   MEDIA_BUYER: { ADS: ["VIEW", "EDIT"], TASKS: ["VIEW", "EDIT"], PORTALS: ["VIEW", "EDIT"] },
@@ -964,15 +978,22 @@ function validate(data) {
 }
 __name(validate, "validate");
 async function listUsers({ env }) {
-  const [users, employees, roles] = await Promise.all([
+  const [users, employees, roles, permissionCatalog, permissionAssignments] = await Promise.all([
     all(env, "SELECT * FROM users ORDER BY created_at DESC"),
     all(env, "SELECT * FROM employees ORDER BY full_name"),
-    all(env, "SELECT * FROM roles ORDER BY role_code")
+    all(env, "SELECT * FROM roles WHERE active = 1 ORDER BY role_code"),
+    all(env, "SELECT * FROM permissions ORDER BY module, action"),
+    all(env, "SELECT * FROM employee_permissions ORDER BY employee_id, permission_id")
   ]);
-  return { users: users.map(safe), employees: toApiList(employees), roles: toApiList(roles) };
+  return {
+    users: users.map(safe),
+    employees: toApiList(employees),
+    roles: toApiList(roles),
+    permissionCatalog: toApiList(permissionCatalog),
+    permissionAssignments: toApiList(permissionAssignments)
+  };
 }
-__name(listUsers, "listUsers");
-async function createUser({ env, actor, data }) {
+__name(listUsers, "listUsers");async function createUser({ env, actor, data }) {
   data.userType = validate(data);
   if (await first(env, "SELECT user_id FROM users WHERE email = ? COLLATE NOCASE", [email(data.email)])) throw new ApiError("USER_EXISTS", "\u064A\u0648\u062C\u062F \u0645\u0633\u062A\u062E\u062F\u0645 \u0645\u0633\u062C\u0644 \u0628\u0647\u0630\u0627 \u0627\u0644\u0628\u0631\u064A\u062F.", {}, 409);
   if (data.userType === "CLIENT" && !await first(env, "SELECT client_id FROM clients WHERE client_id = ?", [data.clientId])) throw new ApiError("CLIENT_NOT_FOUND", "\u0627\u0644\u0639\u0645\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.", {}, 404);
@@ -1004,33 +1025,41 @@ __name(createUser, "createUser");
 async function updateUser({ env, actor, data }) {
   required(data, ["userId"]);
   const existing = await first(env, "SELECT * FROM users WHERE user_id = ?", [data.userId]);
-  if (!existing) throw new ApiError("USER_NOT_FOUND", "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.", {}, 404);
-  const type = data.userType || existing.user_type;
-  if (!USER_TYPES.includes(type)) throw new ApiError("INVALID_USER_TYPE", "\u0646\u0648\u0639 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
+  if (!existing) throw new ApiError("USER_NOT_FOUND", "المستخدم غير موجود.", {}, 404);
+  const type = String(data.userType || existing.user_type).toUpperCase();
+  if (!USER_TYPES.includes(type)) throw new ApiError("INVALID_USER_TYPE", "نوع المستخدم غير صالح.");
+  const nextEmail = data.email === void 0 ? existing.email : email(data.email);
+  const duplicate = await first(env, "SELECT user_id FROM users WHERE email = ? COLLATE NOCASE AND user_id != ?", [nextEmail, data.userId]);
+  if (duplicate) throw new ApiError("USER_EXISTS", "يوجد مستخدم آخر مسجل بهذا البريد.", {}, 409);
+  const clientId = type === "CLIENT" ? text(data.clientId ?? existing.client_id) : null;
+  if (type === "CLIENT" && !clientId) throw new ApiError("CLIENT_REQUIRED", "يجب ربط حساب العميل بعميل مسجل.");
+  if (clientId && !await first(env, "SELECT client_id FROM clients WHERE client_id = ?", [clientId])) {
+    throw new ApiError("CLIENT_NOT_FOUND", "العميل غير موجود.", {}, 404);
+  }
   const employeeId = type === "CLIENT" ? null : await ensureEmployee(env, {
     userType: type,
     employeeId: data.employeeId || existing.employee_id,
-    email: data.email || existing.email,
+    email: nextEmail,
     fullName: data.fullName || existing.full_name,
     role: data.role || existing.role,
     department: data.department,
     active: data.active === void 0 ? existing.active : data.active
   });
   const saved = await update(env, "users", {
+    username: nextEmail,
     user_type: type,
     employee_id: employeeId,
-    client_id: data.clientId ?? existing.client_id,
+    client_id: clientId,
     role: data.role ?? existing.role,
     full_name: data.fullName ?? existing.full_name,
-    email: data.email === void 0 ? existing.email : email(data.email),
+    email: nextEmail,
     active: data.active === void 0 ? existing.active : Number(bool(data.active)),
     updated_at: now()
   }, "user_id", data.userId);
   await audit(env, actor, "USER_UPDATED", "USER", data.userId, without(saved, ["password_salt", "password_hash"]));
   return { user: safe(saved) };
 }
-__name(updateUser, "updateUser");
-async function setUserActive({ env, actor, data }) {
+__name(updateUser, "updateUser");async function setUserActive({ env, actor, data }) {
   required(data, ["userId", "active"]);
   if (data.userId === actor.userId && !bool(data.active)) throw new ApiError("SELF_DISABLE_DENIED", "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u0625\u064A\u0642\u0627\u0641 \u062D\u0633\u0627\u0628\u0643 \u0627\u0644\u062D\u0627\u0644\u064A.");
   const saved = await update(env, "users", { active: Number(bool(data.active)), updated_at: now() }, "user_id", data.userId);
@@ -1040,21 +1069,49 @@ async function setUserActive({ env, actor, data }) {
   return { user: safe(saved) };
 }
 __name(setUserActive, "setUserActive");
+async function deleteUser({ env, actor, data }) {
+  required(data, ["userId"]);
+  if (data.userId === actor.userId) throw new ApiError("SELF_DELETE_DENIED", "لا يمكنك حذف حسابك الحالي.");
+  const existing = await first(env, "SELECT * FROM users WHERE user_id = ?", [data.userId]);
+  if (!existing) throw new ApiError("USER_NOT_FOUND", "المستخدم غير موجود.", {}, 404);
+  if (existing.active && (existing.user_type === "ADMIN" || existing.role === "ADMIN")) {
+    const activeAdmins = await first(env, "SELECT COUNT(*) AS count FROM users WHERE active = 1 AND (user_type = 'ADMIN' OR role = 'ADMIN')");
+    if (Number(activeAdmins?.count || 0) <= 1) throw new ApiError("LAST_ADMIN_DELETE_DENIED", "لا يمكن حذف آخر مدير أساسي نشط.");
+  }
+  const timestamp = now();
+  const statements = [
+    statement(env, "UPDATE users SET active = 0, google_sub = NULL, updated_at = ? WHERE user_id = ?", [timestamp, data.userId])
+  ];
+  if (existing.employee_id) statements.push(statement(env, "UPDATE employees SET active = 0, updated_at = ? WHERE employee_id = ?", [timestamp, existing.employee_id]));
+  await batch(env, statements);
+  await audit(env, actor, "USER_DELETED_SAFE", "USER", data.userId, { email: existing.email });
+  return { deleted: true, user: safe({ ...existing, active: 0, google_sub: null, updated_at: timestamp }) };
+}
+__name(deleteUser, "deleteUser");
+
 async function setUserPermissions({ env, actor, data }) {
   required(data, ["employeeId", "permissions"]);
+  if (!Array.isArray(data.permissions)) throw new ApiError("INVALID_PERMISSIONS", "قائمة الصلاحيات غير صالحة.");
+  if (!await first(env, "SELECT employee_id FROM employees WHERE employee_id = ?", [data.employeeId])) {
+    throw new ApiError("EMPLOYEE_NOT_FOUND", "الموظف غير موجود.", {}, 404);
+  }
+  const catalog = await all(env, "SELECT permission_id FROM permissions");
+  const validIds = new Set(catalog.map((row) => row.permission_id));
+  const invalid = data.permissions.find((item) => !validIds.has(item.permissionId));
+  if (invalid) throw new ApiError("PERMISSION_NOT_FOUND", "صلاحية غير معروفة.", { permissionId: invalid.permissionId });
   const timestamp = now();
-  const statements = [];
+  const statements = [statement(env, "DELETE FROM employee_permissions WHERE employee_id = ?", [data.employeeId])];
   for (const item of data.permissions) {
-    if (!await first(env, "SELECT permission_id FROM permissions WHERE permission_id = ?", [item.permissionId])) throw new ApiError("PERMISSION_NOT_FOUND", "\u0635\u0644\u0627\u062D\u064A\u0629 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641\u0629.", { permissionId: item.permissionId });
-    statements.push(statement(env, `INSERT INTO employee_permissions (employee_permission_id,employee_id,permission_id,allowed,reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(employee_id,permission_id) DO UPDATE SET allowed=excluded.allowed,reason=excluded.reason,updated_at=excluded.updated_at`, [id("EP"), data.employeeId, item.permissionId, Number(bool(item.allowed)), text(item.reason), timestamp, timestamp]));
+    statements.push(statement(env, "INSERT INTO employee_permissions (employee_permission_id,employee_id,permission_id,allowed,reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", [
+      id("EP"), data.employeeId, item.permissionId, Number(bool(item.allowed)), text(item.reason), timestamp, timestamp
+    ]));
   }
   await batch(env, statements);
-  await audit(env, actor, "USER_PERMISSIONS_CHANGED", "EMPLOYEE", data.employeeId, { count: statements.length });
+  await audit(env, actor, "USER_PERMISSIONS_CHANGED", "EMPLOYEE", data.employeeId, { count: data.permissions.length });
   const rows = await all(env, "SELECT * FROM employee_permissions WHERE employee_id = ?", [data.employeeId]);
   return { permissions: toApiList(rows) };
 }
 __name(setUserPermissions, "setUserPermissions");
-
 // src/routes/portals.js
 async function employeePortal({ env, actor }) {
   if (!actor.employeeId) throw new ApiError("EMPLOYEE_LINK_REQUIRED", "\u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0631\u062A\u0628\u0637 \u0628\u0645\u0648\u0638\u0641.", {}, 403);
@@ -1147,13 +1204,27 @@ function calculateAd(data, settings2) {
 __name(calculateAd, "calculateAd");
 
 // src/routes/finance-read.js
-async function listAds({ env, actor }) {
-  let rows = await all(env, "SELECT * FROM paid_ads ORDER BY created_at DESC");
-  if (actor.userType === "CLIENT") rows = rows.filter((row) => row.client_id === actor.clientId);
+async function listAds({ env, actor, data }) {
+  const clauses = [];
+  const bindings = [];
+  if (!bool(data.includeArchived)) clauses.push("a.archived = 0");
+  if (actor.userType === "CLIENT") {
+    clauses.push("a.client_id = ?");
+    bindings.push(actor.clientId);
+  }
+  if (data.clientId) {
+    clauses.push("a.client_id = ?");
+    bindings.push(data.clientId);
+  }
+  if (data.projectId) {
+    clauses.push("a.project_id = ?");
+    bindings.push(data.projectId);
+  }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+  const rows = await all(env, "SELECT a.*, c.client_name, p.project_name FROM paid_ads a JOIN clients c ON c.client_id=a.client_id LEFT JOIN projects p ON p.project_id=a.project_id " + where + " ORDER BY a.created_at DESC", bindings);
   return { ads: rows.map((row) => toApi(sanitizeAd(row, actor))) };
 }
-__name(listAds, "listAds");
-async function getAdSettings({ env }) {
+__name(listAds, "listAds");async function getAdSettings({ env }) {
   return { settings: settingsObject(await all(env, "SELECT * FROM ads_settings ORDER BY setting_key")) };
 }
 __name(getAdSettings, "getAdSettings");
@@ -1177,17 +1248,62 @@ async function listBankTransactions({ env, data }) {
   return { transactions: toApiList(rows) };
 }
 __name(listBankTransactions, "listBankTransactions");
-async function listInvoices({ env, data }) {
-  const rows = data.clientId ? await all(env, "SELECT * FROM invoices WHERE client_id = ? ORDER BY issue_date DESC", [data.clientId]) : await all(env, "SELECT * FROM invoices ORDER BY issue_date DESC");
+async function listInvoices({ env, actor, data }) {
+  const clauses = [];
+  const bindings = [];
+  if (actor.userType === "CLIENT") {
+    clauses.push("i.client_id = ?");
+    bindings.push(actor.clientId);
+  }
+  if (data.clientId) {
+    clauses.push("i.client_id = ?");
+    bindings.push(data.clientId);
+  }
+  if (data.projectId) {
+    clauses.push("i.project_id = ?");
+    bindings.push(data.projectId);
+  }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+  const rows = await all(env, "SELECT i.*, c.client_name, p.project_name, COALESCE(pay.paid_amount,0) AS paid_amount, (i.amount+i.tax_amount-COALESCE(pay.paid_amount,0)) AS balance_due FROM invoices i JOIN clients c ON c.client_id=i.client_id LEFT JOIN projects p ON p.project_id=i.project_id LEFT JOIN (SELECT invoice_id,SUM(amount) AS paid_amount FROM payments GROUP BY invoice_id) pay ON pay.invoice_id=i.invoice_id " + where + " ORDER BY i.issue_date DESC", bindings);
   return { invoices: toApiList(rows) };
 }
-__name(listInvoices, "listInvoices");
-async function listPayments({ env, data }) {
-  const rows = data.clientId ? await all(env, "SELECT * FROM payments WHERE client_id = ? ORDER BY payment_date DESC", [data.clientId]) : await all(env, "SELECT * FROM payments ORDER BY payment_date DESC");
+__name(listInvoices, "listInvoices");async function listPayments({ env, actor, data }) {
+  const clauses = [];
+  const bindings = [];
+  if (actor.userType === "CLIENT") {
+    clauses.push("pay.client_id = ?");
+    bindings.push(actor.clientId);
+  }
+  if (data.clientId) {
+    clauses.push("pay.client_id = ?");
+    bindings.push(data.clientId);
+  }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+  const rows = await all(env, "SELECT pay.*, c.client_name, i.invoice_number FROM payments pay JOIN clients c ON c.client_id=pay.client_id JOIN invoices i ON i.invoice_id=pay.invoice_id " + where + " ORDER BY pay.payment_date DESC", bindings);
   return { payments: toApiList(rows) };
 }
 __name(listPayments, "listPayments");
-async function listExpenses({ env }) {
+
+async function projectInvoicePreview({ env, actor, data }) {
+  required(data, ["clientId", "projectId"]);
+  if (actor.userType === "CLIENT" && actor.clientId !== data.clientId) throw new ApiError("FORBIDDEN", "لا يمكنك عرض مشروع عميل آخر.", {}, 403);
+  const project = await first(env, "SELECT p.*, c.client_name FROM projects p JOIN clients c ON c.client_id=p.client_id WHERE p.project_id=? AND p.client_id=?", [data.projectId, data.clientId]);
+  if (!project) throw new ApiError("PROJECT_NOT_FOUND", "المشروع غير موجود أو لا يتبع العميل المحدد.", {}, 404);
+  const items = await all(env, "SELECT cs.statement_entry_id AS source_id, cs.reference_type AS source_type, cs.reference_id, cs.description, 1 AS quantity, cs.debit AS unit_price, cs.debit AS amount, cs.currency FROM client_statements cs WHERE cs.client_id=? AND cs.project_id=? AND cs.debit>0 AND cs.status!='CANCELLED' AND cs.reference_type!='INVOICE' AND NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.source_type=cs.reference_type AND ii.source_id=cs.statement_entry_id) ORDER BY cs.entry_date", [data.clientId, data.projectId]);
+  const subtotal = round(items.reduce((sum2, item) => sum2 + number(item.amount), 0));
+  const config = { ...DEFAULT_SYSTEM_SETTINGS, ...settingsObject(await all(env, "SELECT * FROM settings")) };
+  const taxRate = number(config["Invoice Tax Rate"], 0);
+  return {
+    client: { clientId: project.client_id, clientName: project.client_name },
+    project: toApi(project),
+    items: toApiList(items),
+    subtotal,
+    taxRate,
+    taxAmount: round(subtotal * taxRate / 100),
+    total: round(subtotal * (1 + taxRate / 100))
+  };
+}
+__name(projectInvoicePreview, "projectInvoicePreview");async function listExpenses({ env }) {
   return { expenses: toApiList(await all(env, "SELECT * FROM expenses ORDER BY expense_date DESC")) };
 }
 __name(listExpenses, "listExpenses");
@@ -1251,6 +1367,7 @@ async function bootstrap({ env, actor, data }) {
   const timestamp = now();
   const statements = [];
   for (const [key, value] of Object.entries(DEFAULT_AD_SETTINGS)) statements.push(statement(env, `INSERT INTO ads_settings (setting_key,setting_value,description,updated_at) VALUES (?,?,?,?) ON CONFLICT(setting_key) DO NOTHING`, [key, value, key, timestamp]));
+  for (const [key, value] of Object.entries(DEFAULT_SYSTEM_SETTINGS)) statements.push(statement(env, "INSERT INTO settings (setting_key,setting_value,description,updated_at) VALUES (?,?,?,?) ON CONFLICT(setting_key) DO NOTHING", [key, value, key, timestamp]));
   for (const role of ROLES) statements.push(statement(env, `INSERT INTO roles (role_id,role_code,role_name,description,active,created_at) VALUES (?,?,?,?,1,?) ON CONFLICT(role_code) DO NOTHING`, [id("ROLE"), role, role, `\u062F\u0648\u0631 ${role}`, timestamp]));
   for (const module of MODULES) for (const action of ACTIONS) statements.push(statement(env, `INSERT INTO permissions (permission_id,module,action,description,created_at) VALUES (?,?,?,?,?) ON CONFLICT(module,action) DO NOTHING`, [id("PERM"), module, action, `${module}:${action}`, timestamp]));
   const adminEmail = email(actor?.email || data.adminEmail);
@@ -1339,6 +1456,131 @@ async function uploadFile({ env, actor, data }) {
 }
 __name(uploadFile, "uploadFile");
 
+// src/routes/platform-settings.js
+async function getSystemSettings({ env }) {
+  const [rows, accounts] = await Promise.all([
+    all(env, "SELECT * FROM settings ORDER BY setting_key"),
+    all(env, "SELECT * FROM bank_accounts WHERE active = 1 ORDER BY account_name")
+  ]);
+  return {
+    settings: { ...DEFAULT_SYSTEM_SETTINGS, ...settingsObject(rows) },
+    adSettings: await settings(env),
+    bankAccounts: toApiList(accounts)
+  };
+}
+__name(getSystemSettings, "getSystemSettings");
+
+async function saveSystemSettings({ env, actor, data }) {
+  const allowed = new Set(Object.keys(DEFAULT_SYSTEM_SETTINGS));
+  const updates = Object.entries(data).filter(([key]) => allowed.has(key));
+  if (!updates.length) throw new ApiError("NO_SETTINGS", "لم يتم إرسال إعدادات صالحة للحفظ.");
+  if (data["Company Email"] && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(data["Company Email"]))) {
+    throw new ApiError("INVALID_EMAIL", "بريد الشركة غير صالح.");
+  }
+  if (data["Payment Terms Days"] !== void 0) {
+    const days = Number(data["Payment Terms Days"]);
+    if (!Number.isInteger(days) || days < 0 || days > 365) throw new ApiError("INVALID_PAYMENT_TERMS", "مدة الاستحقاق يجب أن تكون بين 0 و365 يومًا.");
+  }
+  if (data["Invoice Tax Rate"] !== void 0) {
+    const rate = Number(data["Invoice Tax Rate"]);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new ApiError("INVALID_TAX_RATE", "نسبة الضريبة يجب أن تكون بين 0 و100.");
+  }
+  const timestamp = now();
+  await batch(env, updates.map(([key, value]) => statement(env, "INSERT INTO settings (setting_key,setting_value,description,updated_at) VALUES (?,?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at", [
+    key, String(value ?? ""), key, timestamp
+  ])));
+  await audit(env, actor, "SYSTEM_SETTINGS_UPDATED", "SETTINGS", "SYSTEM", Object.fromEntries(updates));
+  return getSystemSettings({ env });
+}
+__name(saveSystemSettings, "saveSystemSettings");
+
+// src/routes/documents.js
+async function validateDocumentLinks(env, clientId, projectId) {
+  let project = null;
+  if (projectId) {
+    project = await first(env, "SELECT * FROM projects WHERE project_id = ?", [projectId]);
+    if (!project) throw new ApiError("PROJECT_NOT_FOUND", "المشروع غير موجود.", {}, 404);
+    if (clientId && project.client_id !== clientId) throw new ApiError("PROJECT_CLIENT_MISMATCH", "المشروع لا يتبع العميل المحدد.");
+  }
+  if (clientId && !await first(env, "SELECT client_id FROM clients WHERE client_id = ?", [clientId])) {
+    throw new ApiError("CLIENT_NOT_FOUND", "العميل غير موجود.", {}, 404);
+  }
+  return { clientId: clientId || project?.client_id || null, project };
+}
+__name(validateDocumentLinks, "validateDocumentLinks");
+
+async function listDocuments({ env, actor, data }) {
+  const clauses = [];
+  const bindings = [];
+  if (!bool(data.includeArchived)) clauses.push("d.status = 'ACTIVE'");
+  if (data.clientId) {
+    clauses.push("d.client_id = ?");
+    bindings.push(data.clientId);
+  }
+  if (data.projectId) {
+    clauses.push("d.project_id = ?");
+    bindings.push(data.projectId);
+  }
+  if (actor.userType === "CLIENT") {
+    clauses.push("d.client_id = ?");
+    bindings.push(actor.clientId);
+    clauses.push("d.visibility = 'CLIENT'");
+  }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+  const rows = await all(env, "SELECT d.*, c.client_name, p.project_name FROM documents d LEFT JOIN clients c ON c.client_id=d.client_id LEFT JOIN projects p ON p.project_id=d.project_id " + where + " ORDER BY d.created_at DESC", bindings);
+  const documents = await Promise.all(rows.map(async (row) => ({
+    ...toApi(row),
+    "File URL": row.status === "ACTIVE" ? await signedFileUrl(env, row.r2_key, 3600) : ""
+  })));
+  return { documents };
+}
+__name(listDocuments, "listDocuments");
+
+async function createDocument({ env, actor, data }) {
+  required(data, ["title", "category", "fileName", "contentType", "base64"]);
+  const links = await validateDocumentLinks(env, text(data.clientId) || null, text(data.projectId) || null);
+  const visibility = String(data.visibility || "INTERNAL").toUpperCase();
+  if (!["INTERNAL", "CLIENT"].includes(visibility)) throw new ApiError("INVALID_VISIBILITY", "نطاق ظهور المستند غير صالح.");
+  const upload = await uploadFile({ env, actor, data: {
+    fileName: data.fileName,
+    contentType: data.contentType,
+    base64: data.base64,
+    folder: links.clientId ? "documents/" + links.clientId : "documents/general"
+  } });
+  const timestamp = now();
+  const record = {
+    document_id: id("DOC"),
+    client_id: links.clientId,
+    project_id: data.projectId || null,
+    category: text(data.category),
+    title: text(data.title),
+    file_name: text(data.fileName),
+    content_type: text(data.contentType),
+    file_size: Number(upload.size || 0),
+    r2_key: upload.fileId,
+    visibility,
+    status: "ACTIVE",
+    uploaded_by: actor.email,
+    created_at: timestamp,
+    updated_at: timestamp,
+    archived_at: null
+  };
+  await insert(env, "documents", record);
+  await audit(env, actor, "DOCUMENT_CREATED", "DOCUMENT", record.document_id, without(record, ["r2_key"]));
+  return { document: { ...toApi(record), "File URL": upload.fileUrl } };
+}
+__name(createDocument, "createDocument");
+
+async function archiveDocument({ env, actor, data }) {
+  required(data, ["documentId"]);
+  const existing = await first(env, "SELECT * FROM documents WHERE document_id = ?", [data.documentId]);
+  if (!existing) throw new ApiError("DOCUMENT_NOT_FOUND", "المستند غير موجود.", {}, 404);
+  const timestamp = now();
+  const saved = await update(env, "documents", { status: "ARCHIVED", archived_at: timestamp, updated_at: timestamp }, "document_id", data.documentId);
+  await audit(env, actor, "DOCUMENT_ARCHIVED", "DOCUMENT", data.documentId, { fileName: existing.file_name });
+  return { archived: true, document: toApi(saved) };
+}
+__name(archiveDocument, "archiveDocument");
 // src/router.js
 var route = /* @__PURE__ */ __name((handler, module, action, options = {}) => ({ handler, module, action, ...options }), "route");
 var financial = /* @__PURE__ */ __name((module, action) => route(null, module, action, { financial: true }), "financial");
@@ -1368,6 +1610,7 @@ var ROUTES = Object.freeze({
   "POST ads": financial("ADS", "CREATE"),
   "PUT ads": financial("ADS", "EDIT"),
   "POST ads.cancel": financial("ADS", "EDIT"),
+  "POST ads.archive": financial("ADS", "EDIT"),
   "GET ads.settings": route(getAdSettings, "ADS", "VIEW"),
   "POST ads.settings": financial("ADS", "EDIT"),
   "GET ads.summary": route(adSummary, "ADS", "VIEW"),
@@ -1378,7 +1621,9 @@ var ROUTES = Object.freeze({
   "POST bank.deposit": financial("BANKING", "CREATE"),
   "POST bank.adjustment": financial("BANKING", "APPROVE"),
   "GET invoices": route(listInvoices, "FINANCE", "VIEW"),
+  "GET invoices.projectPreview": route(projectInvoicePreview, "FINANCE", "VIEW"),
   "POST invoices": financial("FINANCE", "CREATE"),
+  "POST invoices.project": financial("FINANCE", "CREATE"),
   "PUT invoices": financial("FINANCE", "EDIT"),
   "POST invoices.pdf": financial("FINANCE", "PRINT"),
   "GET payments": route(listPayments, "FINANCE", "VIEW"),
@@ -1394,7 +1639,13 @@ var ROUTES = Object.freeze({
   "POST users": route(createUser, "USERS", "CREATE"),
   "PUT users": route(updateUser, "USERS", "EDIT"),
   "POST users.setActive": route(setUserActive, "USERS", "EDIT"),
+  "DELETE users": route(deleteUser, "USERS", "DELETE"),
   "POST users.permissions": route(setUserPermissions, "USERS", "APPROVE"),
+  "GET system.settings": route(getSystemSettings, "SYSTEM", "VIEW"),
+  "PUT system.settings": route(saveSystemSettings, "SYSTEM", "EDIT"),
+  "GET documents": route(listDocuments, "PORTALS", "VIEW"),
+  "POST documents": route(createDocument, "PORTALS", "EDIT"),
+  "DELETE documents": route(archiveDocument, "PORTALS", "DELETE"),
   "GET employee.portal": route(employeePortal, "PORTALS", "VIEW"),
   "POST employee.update": route(employeeUpdate, "PORTALS", "EDIT"),
   "GET client.portal": route(clientPortal, "PORTALS", "VIEW"),
@@ -1514,6 +1765,7 @@ function statementForAd(ad, existing) {
   return {
     statement_entry_id: existing?.statement_entry_id || id("STE"),
     client_id: ad.client_id,
+    project_id: ad.project_id || null,
     entry_date: existing?.entry_date || now(),
     entry_type: "AD_CHARGE",
     reference_type: "PAID_AD",
@@ -1681,6 +1933,16 @@ async function cancelAd({ env, actor, data }) {
   return { ad: toApi({ ...ad, status: "CANCELLED", cancelled_at: timestamp, cancellation_reason: text(data.cancellationReason), updated_at: timestamp }), refund: toApi(refund) };
 }
 __name(cancelAd, "cancelAd");
+async function archiveAd({ env, actor, data }) {
+  required(data, ["adId"]);
+  const existing = await first(env, "SELECT * FROM paid_ads WHERE ad_id = ?", [data.adId]);
+  if (!existing) throw new ApiError("AD_NOT_FOUND", "الإعلان غير موجود.", {}, 404);
+  const archived = data.archived === void 0 ? true : bool(data.archived);
+  const saved = await update(env, "paid_ads", { archived: Number(archived), updated_at: now() }, "ad_id", data.adId);
+  await audit(env, actor, archived ? "AD_ARCHIVED" : "AD_RESTORED", "PAID_AD", data.adId, { archived });
+  return { archived, ad: toApi(saved) };
+}
+__name(archiveAd, "archiveAd");
 async function saveAdSettings({ env, actor, data }) {
   if (actor.userType !== "ADMIN" && actor.role !== "MANAGER") throw new ApiError("FORBIDDEN", "\u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0627\u0644\u0625\u0639\u0644\u0627\u0646\u0627\u062A \u0645\u062A\u0627\u062D\u0629 \u0644\u0644\u0645\u062F\u064A\u0631 \u0641\u0642\u0637.", {}, 403);
   const allowed = ["Default Cost Rate", "Default Commission Rate", "Default Currency", "Minimum Profit Amount", "Minimum Profit Margin", "Default Bank Account", "Allow Negative Bank Balance"];
@@ -1736,16 +1998,137 @@ async function bankAdjustment({ env, actor, data }) {
   return { transaction: toApi(transaction), currentBalance: balance };
 }
 __name(bankAdjustment, "bankAdjustment");
+async function loadSystemSettings(env) {
+  return { ...DEFAULT_SYSTEM_SETTINGS, ...settingsObject(await all(env, "SELECT * FROM settings")) };
+}
+__name(loadSystemSettings, "loadSystemSettings");
+
+function makeInvoiceNumber(config, timestamp) {
+  const prefix = text(config["Invoice Prefix"] || "ANC").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 12) || "ANC";
+  return prefix + "-" + timestamp.replace(/D/g, "").slice(0, 14);
+}
+__name(makeInvoiceNumber, "makeInvoiceNumber");
+
 async function createInvoice({ env, actor, data }) {
   required(data, ["clientId", "issueDate", "dueDate", "amount"]);
+  const client = await first(env, "SELECT * FROM clients WHERE client_id = ?", [data.clientId]);
+  if (!client) throw new ApiError("CLIENT_NOT_FOUND", "العميل غير موجود.", {}, 404);
+  if (data.projectId) {
+    const project = await first(env, "SELECT project_id FROM projects WHERE project_id=? AND client_id=?", [data.projectId, data.clientId]);
+    if (!project) throw new ApiError("PROJECT_NOT_FOUND", "المشروع غير موجود أو لا يتبع العميل المحدد.", {}, 404);
+  }
+  const config = await loadSystemSettings(env);
   const timestamp = now();
-  const invoice = { invoice_id: id("INV"), client_id: data.clientId, project_id: data.projectId || null, invoice_number: data.invoiceNumber || `ANC-${timestamp.replace(/\D/g, "").slice(0, 14)}`, issue_date: data.issueDate, due_date: data.dueDate, amount: round(data.amount), tax_amount: round(data.taxAmount), currency: data.currency || "EGP", status: data.status || "DRAFT", pdf_key: "", pdf_url: "", created_at: timestamp, updated_at: timestamp };
-  const entry = { statement_entry_id: id("STE"), client_id: data.clientId, entry_date: data.issueDate, entry_type: "INVOICE", reference_type: "INVOICE", reference_id: invoice.invoice_id, description: `\u0641\u0627\u062A\u0648\u0631\u0629 \u0631\u0642\u0645 ${invoice.invoice_number}`, debit: round(invoice.amount + invoice.tax_amount), credit: 0, currency: invoice.currency, status: invoice.status, created_at: timestamp, updated_at: timestamp };
+  const invoice = {
+    invoice_id: id("INV"),
+    client_id: data.clientId,
+    project_id: data.projectId || null,
+    invoice_number: data.invoiceNumber || makeInvoiceNumber(config, timestamp),
+    issue_date: data.issueDate,
+    due_date: data.dueDate,
+    amount: round(data.amount),
+    tax_amount: round(data.taxAmount),
+    currency: data.currency || config["Default Currency"] || "EGP",
+    status: data.status || "DRAFT",
+    pdf_key: "",
+    pdf_url: "",
+    notes: text(data.notes),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+  const entry = {
+    statement_entry_id: id("STE"),
+    client_id: data.clientId,
+    project_id: data.projectId || null,
+    entry_date: data.issueDate,
+    entry_type: "INVOICE",
+    reference_type: "INVOICE",
+    reference_id: invoice.invoice_id,
+    description: "فاتورة رقم " + invoice.invoice_number,
+    debit: round(invoice.amount + invoice.tax_amount),
+    credit: 0,
+    currency: invoice.currency,
+    status: invoice.status,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
   await batch(env, [prepared(env, insertSql("invoices", invoice)), prepared(env, insertSql("client_statements", entry))]);
   await audit(env, actor, "INVOICE_CREATED", "INVOICE", invoice.invoice_id, invoice);
   return { invoice: toApi(invoice), statementEntry: toApi(entry) };
 }
 __name(createInvoice, "createInvoice");
+
+async function createProjectInvoice({ env, actor, data }) {
+  required(data, ["clientId", "projectId"]);
+  const project = await first(env, "SELECT p.*, c.client_name FROM projects p JOIN clients c ON c.client_id=p.client_id WHERE p.project_id=? AND p.client_id=?", [data.projectId, data.clientId]);
+  if (!project) throw new ApiError("PROJECT_NOT_FOUND", "المشروع غير موجود أو لا يتبع العميل المحدد.", {}, 404);
+  const sources = await all(env, "SELECT cs.statement_entry_id, cs.reference_type, cs.reference_id, cs.description, cs.debit, cs.currency FROM client_statements cs WHERE cs.client_id=? AND cs.project_id=? AND cs.debit>0 AND cs.status!='CANCELLED' AND cs.reference_type!='INVOICE' AND NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.source_type=cs.reference_type AND ii.source_id=cs.statement_entry_id) ORDER BY cs.entry_date", [data.clientId, data.projectId]);
+  if (!sources.length) throw new ApiError("NO_BILLABLE_ITEMS", "لا توجد بنود غير مفوترة داخل هذا المشروع.");
+  const config = await loadSystemSettings(env);
+  const timestamp = now();
+  const issueDate = data.issueDate || timestamp.slice(0, 10);
+  const defaultDue = new Date(issueDate + "T00:00:00.000Z");
+  defaultDue.setUTCDate(defaultDue.getUTCDate() + Math.max(0, Math.min(365, number(config["Payment Terms Days"], 14))));
+  const dueDate = data.dueDate || defaultDue.toISOString().slice(0, 10);
+  const taxRate = data.taxRate === void 0 || data.taxRate === "" ? number(config["Invoice Tax Rate"], 0) : number(data.taxRate);
+  if (taxRate < 0 || taxRate > 100) throw new ApiError("INVALID_TAX_RATE", "نسبة الضريبة يجب أن تكون بين 0 و100.");
+  const amount = round(sources.reduce((sum2, row) => sum2 + number(row.debit), 0));
+  const taxAmount = round(amount * taxRate / 100);
+  const invoice = {
+    invoice_id: id("INV"),
+    client_id: data.clientId,
+    project_id: data.projectId,
+    invoice_number: data.invoiceNumber || makeInvoiceNumber(config, timestamp),
+    issue_date: issueDate,
+    due_date: dueDate,
+    amount,
+    tax_amount: taxAmount,
+    currency: data.currency || sources[0].currency || config["Default Currency"] || "EGP",
+    status: data.status || "DRAFT",
+    pdf_key: "",
+    pdf_url: "",
+    notes: text(data.notes),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+  const invoiceItems = sources.map((source) => ({
+    invoice_item_id: id("INI"),
+    invoice_id: invoice.invoice_id,
+    project_id: data.projectId,
+    source_type: source.reference_type,
+    source_id: source.statement_entry_id,
+    description: source.description,
+    quantity: 1,
+    unit_price: round(source.debit),
+    amount: round(source.debit),
+    created_at: timestamp
+  }));
+  const entry = {
+    statement_entry_id: id("STE"),
+    client_id: data.clientId,
+    project_id: data.projectId,
+    entry_date: issueDate,
+    entry_type: "INVOICE_DOCUMENT",
+    reference_type: "INVOICE",
+    reference_id: invoice.invoice_id,
+    description: "فاتورة مشروع " + project.project_name + " رقم " + invoice.invoice_number,
+    debit: 0,
+    credit: 0,
+    currency: invoice.currency,
+    status: invoice.status,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+  const statements = [
+    prepared(env, insertSql("invoices", invoice)),
+    ...invoiceItems.map((item) => prepared(env, insertSql("invoice_items", item))),
+    prepared(env, insertSql("client_statements", entry))
+  ];
+  await batch(env, statements);
+  await audit(env, actor, "PROJECT_INVOICE_CREATED", "INVOICE", invoice.invoice_id, { projectId: data.projectId, itemCount: invoiceItems.length, amount, taxAmount });
+  return { invoice: toApi({ ...invoice, client_name: project.client_name, project_name: project.project_name }), items: toApiList(invoiceItems), statementEntry: toApi(entry) };
+}
+__name(createProjectInvoice, "createProjectInvoice");
 async function updateInvoice({ env, actor, data }) {
   required(data, ["invoiceId"]);
   const existing = await first(env, "SELECT * FROM invoices WHERE invoice_id = ?", [data.invoiceId]);
@@ -1791,28 +2174,46 @@ async function createExpense({ env, actor, data }) {
 __name(createExpense, "createExpense");
 async function createInvoicePdf({ env, actor, data }) {
   required(data, ["invoiceId"]);
-  const invoice = await first(env, `SELECT i.*, c.client_name FROM invoices i JOIN clients c ON c.client_id = i.client_id WHERE i.invoice_id = ?`, [data.invoiceId]);
-  if (!invoice) throw new ApiError("INVOICE_NOT_FOUND", "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629.", {}, 404);
-  const key = `invoices/${invoice.invoice_id}.pdf`;
-  const pdf = simplePdf([APP_NAME, `Invoice: ${invoice.invoice_number}`, `Client: ${invoice.client_name}`, `Issue date: ${invoice.issue_date}`, `Due date: ${invoice.due_date}`, `Amount: ${invoice.amount} ${invoice.currency}`, `Tax: ${invoice.tax_amount} ${invoice.currency}`, `Status: ${invoice.status}`]);
-  await env.FILES.put(key, pdf, { httpMetadata: { contentType: "application/pdf", contentDisposition: `inline; filename="${invoice.invoice_number}.pdf"` }, customMetadata: { invoiceId: invoice.invoice_id } });
+  const [invoice, items, payments, settingsRows] = await Promise.all([
+    first(env, "SELECT i.*, c.client_name, p.project_name FROM invoices i JOIN clients c ON c.client_id=i.client_id LEFT JOIN projects p ON p.project_id=i.project_id WHERE i.invoice_id=?", [data.invoiceId]),
+    all(env, "SELECT * FROM invoice_items WHERE invoice_id=? ORDER BY created_at", [data.invoiceId]),
+    all(env, "SELECT * FROM payments WHERE invoice_id=? ORDER BY payment_date", [data.invoiceId]),
+    all(env, "SELECT * FROM settings")
+  ]);
+  if (!invoice) throw new ApiError("INVOICE_NOT_FOUND", "الفاتورة غير موجودة.", {}, 404);
+  const config = { ...DEFAULT_SYSTEM_SETTINGS, ...settingsObject(settingsRows) };
+  const pdf = await buildInvoicePdf({ invoice, items, payments, settings: config });
+  const key = "invoices/" + invoice.invoice_id + ".pdf";
+  const fileName = invoice.invoice_number + ".pdf";
+  await env.FILES.put(key, pdf, {
+    httpMetadata: { contentType: "application/pdf", contentDisposition: 'inline; filename="' + fileName + '"' },
+    customMetadata: { invoiceId: invoice.invoice_id, clientId: invoice.client_id, projectId: invoice.project_id || "" }
+  });
   const url = await signedFileUrl(env, key, 3600);
-  await update(env, "invoices", { pdf_key: key, pdf_url: url, updated_at: now() }, "invoice_id", invoice.invoice_id);
-  await audit(env, actor, "INVOICE_PDF_CREATED", "INVOICE", invoice.invoice_id, { key });
-  return { fileId: key, url, name: `${invoice.invoice_number}.pdf` };
+  const timestamp = now();
+  const documentId = id("DOC");
+  await batch(env, [
+    statement(env, "UPDATE invoices SET pdf_key=?, pdf_url=?, updated_at=? WHERE invoice_id=?", [key, url, timestamp, invoice.invoice_id]),
+    statement(env, "INSERT INTO documents (document_id,client_id,project_id,category,title,file_name,content_type,file_size,r2_key,visibility,status,uploaded_by,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,'CLIENT','ACTIVE',?,?,?,NULL) ON CONFLICT(r2_key) DO UPDATE SET title=excluded.title,file_name=excluded.file_name,file_size=excluded.file_size,status='ACTIVE',updated_at=excluded.updated_at,archived_at=NULL", [
+      documentId, invoice.client_id, invoice.project_id || null, "INVOICE", "فاتورة " + invoice.invoice_number, fileName, "application/pdf", pdf.byteLength, key, actor.email, timestamp, timestamp
+    ])
+  ]);
+  await audit(env, actor, "INVOICE_PDF_CREATED", "INVOICE", invoice.invoice_id, { key, itemCount: items.length, size: pdf.byteLength });
+  return { fileId: key, url, name: fileName, size: pdf.byteLength };
 }
-__name(createInvoicePdf, "createInvoicePdf");
-var APP_NAME = "ANC Marketing Agency ERP";
+__name(createInvoicePdf, "createInvoicePdf");var APP_NAME = "ANC Marketing Agency ERP";
 var OPERATIONS = Object.freeze({
   "POST ads": createAd,
   "PUT ads": updateAd,
   "POST ads.cancel": cancelAd,
+  "POST ads.archive": archiveAd,
   "POST ads.settings": saveAdSettings,
   "POST bank.accounts": createBankAccount,
   "PUT bank.accounts": updateBankAccount,
   "POST bank.deposit": bankDeposit,
   "POST bank.adjustment": bankAdjustment,
   "POST invoices": createInvoice,
+  "POST invoices.project": createProjectInvoice,
   "PUT invoices": updateInvoice,
   "POST invoices.pdf": createInvoicePdf,
   "POST payments": recordPayment,

@@ -110,5 +110,6 @@ window.API = Object.freeze({
   get: (route, data = {}) => ANCAuth.request(route, 'GET', data),
   post: (route, data = {}) => ANCAuth.request(route, 'POST', data),
   put: (route, data = {}) => ANCAuth.request(route, 'PUT', data),
+  delete: (route, data = {}) => ANCAuth.request(route, 'DELETE', data),
   health: () => ANCAuth.request('health', 'GET', {}, { public: true })
 });
