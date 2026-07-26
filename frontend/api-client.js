@@ -105,11 +105,49 @@ window.ANCAuth = (() => {
   return Object.freeze({ token, profile, request, acceptCredential, requireUser, logout, clear });
 })();
 
+function approvalDescriptor(route, method, data) {
+  const definitions = {
+    'PUT tasks': ['TASK','taskId','UPDATE'],
+    'PUT ads': ['AD','adId','UPDATE'],
+    'POST ads.archive': ['AD','adId',data.archived === false ? 'RESTORE' : 'ARCHIVE'],
+    'POST ads.cancel': ['AD','adId','DELETE'],
+    'PUT studio.jobs': ['STUDIO_JOB','studioJobId','UPDATE'],
+    'PUT studio.assignments': ['STUDIO_JOB','studioJobId','UPDATE'],
+    'PUT users': ['USER','userId','UPDATE'],
+    'POST users.setActive': ['USER','userId',data.active ? 'RESTORE' : 'ARCHIVE'],
+    'DELETE users': ['USER','userId','DELETE'],
+    'POST users.permissions': ['USER','userId','PERMISSIONS'],
+    'DELETE documents': ['DOCUMENT','documentId','ARCHIVE'],
+    'PUT invoices': ['INVOICE','invoiceId','UPDATE'],
+    'PUT bank.accounts': ['BANK_ACCOUNT','bankAccountId',data.active === false ? 'ARCHIVE' : 'UPDATE'],
+    'PUT expenses': ['EXPENSE','expenseId','UPDATE'],
+    'POST expenses.archive': ['EXPENSE','expenseId','ARCHIVE']
+  };
+  const definition = definitions[`${method} ${route}`];
+  if (!definition) return null;
+  return { entityType: definition[0], entityId: data[definition[1]], action: definition[2] };
+}
+
+async function governedRequest(route, method = 'GET', data = {}, options = {}) {
+  const user = window.ANC_CURRENT_USER;
+  const role = String(user?.role || '').toUpperCase();
+  const isManagement = user?.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER'].includes(role);
+  const descriptor = isManagement ? approvalDescriptor(route, method, data) : null;
+  if (descriptor?.entityId) {
+    return ANCAuth.request('approvals','POST',{
+      ...descriptor,
+      payload: data,
+      description: data.approvalReason || `${descriptor.action} ${descriptor.entityType} ${descriptor.entityId}`
+    });
+  }
+  return ANCAuth.request(route,method,data,options);
+}
+
 window.API = Object.freeze({
-  request: (route, method = 'GET', data = {}, options = {}) => ANCAuth.request(route, method, data, options),
-  get: (route, data = {}) => ANCAuth.request(route, 'GET', data),
-  post: (route, data = {}) => ANCAuth.request(route, 'POST', data),
-  put: (route, data = {}) => ANCAuth.request(route, 'PUT', data),
-  delete: (route, data = {}) => ANCAuth.request(route, 'DELETE', data),
+  request: governedRequest,
+  get: (route, data = {}) => governedRequest(route, 'GET', data),
+  post: (route, data = {}) => governedRequest(route, 'POST', data),
+  put: (route, data = {}) => governedRequest(route, 'PUT', data),
+  delete: (route, data = {}) => governedRequest(route, 'DELETE', data),
   health: () => ANCAuth.request('health', 'GET', {}, { public: true })
 });

@@ -1,8 +1,23 @@
 const STORAGE_KEY = 'anc-erp-staging-data-v2';
 const LEGACY_STORAGE_KEY = 'anc-erp-staging-data-v1';
 const THEME_KEY = 'anc-erp-theme';
+const LANGUAGE_KEY = 'anc-erp-language';
 const ROLE_KEY = 'anc-erp-preview-role';
 const CLIENT_PREVIEW_KEY = 'anc-erp-preview-client';
+const APP_BASE_PATH = (() => {
+  const configured = String(window.APP_CONFIG?.BASE_PATH || '/').trim();
+  const normalized = `/${configured.replace(/^\/+|\/+$/g, '')}/`;
+  return normalized === '//' ? '/' : normalized;
+})();
+
+function appPath(relativePath = '') {
+  const cleanPath = String(relativePath).replace(/^\/+/, '');
+  return `${APP_BASE_PATH}${cleanPath}`;
+}
+
+function routePath(route) {
+  return route === 'dashboard' ? APP_BASE_PATH : appPath(route);
+}
 
 const roleMetadata = Object.freeze({
   PRIMARY_MANAGER: { label: 'المدير الأساسي', note: 'صلاحية مباشرة واعتماد طلبات المدير المساعد.' },
@@ -153,6 +168,44 @@ const moduleMaps = {
   ]
 };
 
+const languageCatalog = {
+  ar: {
+    groups: ['الإدارة','التنفيذ','المالية','النظام'],
+    pages: {
+      dashboard:['لوحة المؤشرات','نظرة عامة'], clients:['العملاء','إدارة علاقات العملاء'], projects:['المشروعات','إدارة العمل'], orders:['الطلبات','الخدمات'],
+      ads:['الإعلانات الممولة','Paid Media'], studio:['الاستوديو والإنتاج','Studio'], tasks:['المهام والتسليمات','Operations'], finance:['الفواتير والمدفوعات','Finance'],
+      banking:['البنك والحركات','Banking'], reports:['التقارير والربحية','Insights'], documents:['المستندات','Drive'], employees:['المستخدمون والصلاحيات','RBAC'],
+      approvals:['طلبات الاعتماد','Governance'], audit:['سجل النشاط','Security'], settings:['الإعدادات','System']
+    }
+  },
+  en: {
+    groups: ['Management','Delivery','Finance','System'],
+    pages: {
+      dashboard:['Dashboard','Overview'], clients:['Clients','CRM'], projects:['Projects','Work Management'], orders:['Requests','Services'],
+      ads:['Paid Ads','Paid Media'], studio:['Studio & Production','Studio'], tasks:['Tasks & Deliveries','Operations'], finance:['Invoices & Payments','Finance'],
+      banking:['Banking','Banking'], reports:['Reports & Profitability','Insights'], documents:['Documents','Drive'], employees:['Users & Permissions','RBAC'],
+      approvals:['Approvals','Governance'], audit:['Audit Log','Security'], settings:['Settings','System']
+    }
+  }
+};
+
+function applyLanguage(language) {
+  const selected = language === 'en' ? 'en' : 'ar';
+  localStorage.setItem(LANGUAGE_KEY, selected);
+  document.documentElement.lang = selected;
+  document.documentElement.dir = selected === 'ar' ? 'rtl' : 'ltr';
+  const catalog = languageCatalog[selected];
+  navigationGroups.forEach((group,index) => {
+    group.label = catalog.groups[index];
+    group.items.forEach(item => { if (catalog.pages[item.id]) item.label = catalog.pages[item.id][0]; });
+  });
+  Object.entries(catalog.pages).forEach(([key,value]) => {
+    if (pageMetadata[key]) { pageMetadata[key].title = value[0]; pageMetadata[key].eyebrow = value[1]; }
+  });
+  const button = document.querySelector('#language-button');
+  if (button) button.textContent = selected === 'ar' ? 'EN' : 'AR';
+  if (currentUser) renderPage();
+}
 const app = document.querySelector('#app');
 const content = document.querySelector('#page-content');
 const title = document.querySelector('#page-title');
@@ -165,8 +218,8 @@ const formError = document.querySelector('#form-error');
 const roleRoutes = Object.freeze({
   PRIMARY_MANAGER: Object.keys(pageMetadata),
   ASSISTANT_MANAGER: Object.keys(pageMetadata),
-  EMPLOYEE: ['dashboard', 'tasks', 'studio', 'ads', 'documents'],
-  CLIENT: ['dashboard', 'projects', 'orders', 'finance', 'documents']
+  EMPLOYEE: ['dashboard', 'tasks', 'studio', 'ads'],
+  CLIENT: ['dashboard', 'projects', 'orders', 'finance']
 });
 
 let currentUser = null;
@@ -178,6 +231,7 @@ let deferredInstallPrompt = null;
 let serverDashboard = null;
 let portalData = null;
 let employeePortal = null;
+let pagePolicies = [];
 let state = { version: 3, clients: [], projects: [], approvals: [] };
 
 function svg(name, className = '') {
@@ -307,11 +361,19 @@ async function loadProductionState() {
 }
 
 function allowedRoutes() {
-  if (currentRole !== 'EMPLOYEE') return roleRoutes[currentRole] || roleRoutes.EMPLOYEE;
-  const role = String(currentUser?.role || '').toUpperCase();
-  if (role === 'MEDIA_BUYER') return ['dashboard', 'tasks', 'ads', 'documents'];
-  if (role === 'CREATIVE' || role === 'STUDIO') return ['dashboard', 'tasks', 'studio', 'documents'];
-  return ['dashboard', 'tasks', 'documents'];
+  let routes;
+  if (currentRole !== 'EMPLOYEE') routes = [...(roleRoutes[currentRole] || roleRoutes.EMPLOYEE)];
+  else {
+    const role = String(currentUser?.role || '').toUpperCase();
+    if (role === 'MEDIA_BUYER') routes = ['dashboard', 'tasks', 'ads'];
+    else if (role === 'CREATIVE' || role === 'STUDIO') routes = ['dashboard', 'tasks', 'studio'];
+    else routes = ['dashboard', 'tasks'];
+  }
+  const portal = ['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole) ? 'ADMIN' : currentRole === 'CLIENT' ? 'CLIENT' : 'EMPLOYEE';
+  const policies = new Map(pagePolicies.filter(policy => policy.Portal === portal).map(policy => [policy['Page Key'], policy]));
+  routes = routes.filter(route => policies.get(route)?.Visibility !== 'HIDDEN');
+  if (!['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole)) routes = routes.filter(route => route !== 'documents');
+  return [...new Set(routes)];
 }
 
 function isRouteAllowed(route) {
@@ -336,14 +398,34 @@ function pendingForEntity(entityType, entityId) {
 }
 
 function routeFromLocation() {
-  const route = location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
+  const relativePath = APP_BASE_PATH !== '/' && location.pathname.startsWith(APP_BASE_PATH)
+    ? location.pathname.slice(APP_BASE_PATH.length)
+    : location.pathname.replace(/^\/+/, '');
+  const route = relativePath.split('/').filter(Boolean)[0] || 'dashboard';
   return pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
 }
 
+function activePagePolicy() {
+  const portal = ['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole) ? 'ADMIN' : currentRole === 'CLIENT' ? 'CLIENT' : 'EMPLOYEE';
+  return pagePolicies.find(policy => policy.Portal === portal && policy['Page Key'] === currentRoute) || null;
+}
+
+function refreshPageAccess() {
+  const policy = activePagePolicy();
+  const primarySettingsRecovery = currentRole === 'PRIMARY_MANAGER' && currentRoute === 'settings';
+  window.ANC_PAGE_READ_ONLY = !primarySettingsRecovery && policy?.['Access Level'] === 'READ_ONLY';
+  window.ANC_APPLY_PAGE_ACCESS = root => {
+    if (!root || !window.ANC_PAGE_READ_ONLY) return;
+    if (!root.querySelector('[data-read-only-banner]')) root.insertAdjacentHTML('afterbegin','<div class="alert warning" data-read-only-banner>هذه الصفحة مضبوطة للعرض فقط. عمليات الإضافة والتعديل والأرشفة معطلة لهذا البورتال.</div>');
+    root.querySelectorAll('button, input, select, textarea').forEach(element => {
+      element.disabled = true;
+    });
+  };
+}
 function navigate(route, options = {}) {
   const safeRoute = pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
-  if (!options.replace && safeRoute !== currentRoute) history.pushState({}, '', safeRoute === 'dashboard' ? '/' : `/${safeRoute}`);
-  if (options.replace) history.replaceState({}, '', safeRoute === 'dashboard' ? '/' : `/${safeRoute}`);
+  if (!options.replace && safeRoute !== currentRoute) history.pushState({}, '', routePath(safeRoute));
+  if (options.replace) history.replaceState({}, '', routePath(safeRoute));
   currentRoute = safeRoute;
   closeSidebar();
   closeMoreSheet();
@@ -354,7 +436,7 @@ function navigate(route, options = {}) {
 
 function navLink(item, extraClass = '') {
   const active = item.id === currentRoute;
-  return `<a class="nav-link ${extraClass} ${active ? 'is-active' : ''}" href="/${item.id}" data-route="${item.id}" ${active ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`;
+  return `<a class="nav-link ${extraClass} ${active ? 'is-active' : ''}" href="${routePath(item.id)}" data-route="${item.id}" ${active ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`;
 }
 
 function renderNavigation() {
@@ -380,7 +462,7 @@ function renderNavigation() {
     .filter(Boolean);
   const moreActive = !mobileItems.some((item) => item.id === currentRoute);
   document.querySelector('#mobile-navigation').innerHTML = `
-    ${mobileItems.map((item) => `<a class="mobile-nav-link ${item.id === currentRoute ? 'is-active' : ''}" href="/${item.id}" data-route="${item.id}" ${item.id === currentRoute ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`).join('')}
+    ${mobileItems.map((item) => `<a class="mobile-nav-link ${item.id === currentRoute ? 'is-active' : ''}" href="${routePath(item.id)}" data-route="${item.id}" ${item.id === currentRoute ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`).join('')}
     <button class="mobile-nav-link ${moreActive ? 'is-active' : ''}" type="button" data-action="open-more">${svg('more')}<span>المزيد</span></button>
   `;
 
@@ -434,8 +516,10 @@ function renderLiveModule(moduleName) {
 function renderPage() {
   if (!isRouteAllowed(currentRoute)) {
     currentRoute = 'dashboard';
-    history.replaceState({}, '', '/');
+    history.replaceState({}, '', routePath('dashboard'));
   }
+  window.UI?.mountDateFilter?.(currentRole, () => renderPage());
+  refreshPageAccess();
   setHeader();
   renderNavigation();
   updateRoleInterface();
@@ -447,6 +531,7 @@ function renderPage() {
   else if (currentRoute === 'approvals') content.innerHTML = renderApprovals();
   else if (currentRoute === 'documents') renderLiveModule('documents');
   else if (currentRoute === 'tasks' && currentRole === 'EMPLOYEE') content.innerHTML = renderEmployeeTasks();
+  else if (currentRoute === 'orders') renderLiveModule('requests');
   else if (currentRole === 'CLIENT') content.innerHTML = renderClientModule(currentRoute);
   else if (currentRoute === 'tasks') renderLiveModule('operations');
   else if (currentRoute === 'ads') renderLiveModule('ads');
@@ -456,16 +541,20 @@ function renderPage() {
   else if (currentRoute === 'employees') renderLiveModule('users');
   else if (currentRoute === 'settings') renderLiveModule('settings');
   else content.innerHTML = renderModuleMap(currentRoute);
+  queueMicrotask(() => window.ANC_APPLY_PAGE_ACCESS?.(content));
 }
 
 function renderDashboard() {
   if (currentRole === 'CLIENT') return renderClientDashboard();
   if (currentRole === 'EMPLOYEE') return renderEmployeeDashboard();
 
-  const activeClients = state.clients.filter((client) => client.status === 'ACTIVE' && !client.archived).length;
-  const activeProjects = state.projects.filter((project) => project.status === 'ACTIVE' && !project.archived).length;
-  const pendingApprovals = state.approvals.filter((request) => request.status === 'PENDING').length;
-  const totalBudget = state.projects.filter((project) => !project.archived).reduce((sum, project) => sum + Number(project.budget || 0), 0);
+  const visibleClients = UI.filterRows(state.clients, ['createdAt', 'updatedAt']);
+  const visibleProjects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']);
+  const visibleApprovals = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']);
+  const activeClients = visibleClients.filter((client) => client.status === 'ACTIVE' && !client.archived).length;
+  const activeProjects = visibleProjects.filter((project) => project.status === 'ACTIVE' && !project.archived).length;
+  const pendingApprovals = visibleApprovals.filter((request) => request.status === 'PENDING').length;
+  const totalBudget = visibleProjects.filter((project) => !project.archived).reduce((sum, project) => sum + Number(project.budget || 0), 0);
   const metrics = [
     ['clients', 'العملاء النشطون', activeClients, state.clients.length ? `من إجمالي ${state.clients.length} عميل` : 'ابدأ بإضافة أول عميل'],
     ['projects', 'المشروعات النشطة', activeProjects, state.projects.length ? `من إجمالي ${state.projects.length} مشروع` : 'لم تُسجل مشروعات بعد'],
@@ -553,7 +642,7 @@ function renderClientDashboard() {
   if (!client) {
     return emptyState('clients', 'لا يوجد حساب عميل للمعاينة', 'ارجع إلى دور المدير الأساسي وأضف عميلًا أولًا، ثم اختر واجهة العميل.', 'العودة للإدارة', 'role-primary');
   }
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   const activeProjects = projects.filter((project) => project.status === 'ACTIVE').length;
   return `
     <section class="portal-hero">
@@ -584,7 +673,7 @@ function renderClientDashboard() {
 function renderClientProjects() {
   const client = selectedPreviewClient();
   if (!client) return renderClientDashboard();
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   return `
     <div class="page-toolbar">
       <div class="toolbar-copy"><h2>مشروعات ${escapeHtml(client.name)}</h2><p>واجهة قراءة مخصصة للعميل ولا تعرض بيانات مالية داخلية.</p></div>
@@ -629,7 +718,7 @@ function renderClientModule(route) {
 }
 
 function employeeVisibleProjects() {
-  return state.projects.filter((project) => !project.archived && !['CANCELLED', 'COMPLETED'].includes(project.status));
+  return UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => !project.archived && !['CANCELLED', 'COMPLETED'].includes(project.status));
 }
 
 function renderEmployeeDashboard() {
@@ -691,7 +780,7 @@ function employeeTaskCard(project) {
 }
 
 function renderApprovals() {
-  const items = [...state.approvals].reverse();
+  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']).reverse();
   const pending = items.filter((request) => request.status === 'PENDING').length;
   return `
     ${rolePreviewBanner()}
@@ -724,12 +813,13 @@ function approvalCard(request) {
 }
 
 function actionLabel(action) {
-  return ({ CREATE: 'إنشاء', UPDATE: 'تعديل', STATUS: 'تغيير حالة', ARCHIVE: 'أرشفة', RESTORE: 'استعادة' })[action] || action;
+  return ({ CREATE: 'إنشاء', UPDATE: 'تعديل', STATUS: 'تغيير حالة', ARCHIVE: 'أرشفة', RESTORE: 'استعادة', DELETE: 'حذف آمن' })[action] || action;
 }
 
 function changeSummary(request) {
   if (request.action === 'ARCHIVE') return '<span>أرشفة السجل مع الاحتفاظ بالتاريخ والروابط.</span>';
   if (request.action === 'RESTORE') return '<span>استعادة السجل المؤرشف إلى القوائم النشطة.</span>';
+  if (request.action === 'DELETE') return '<span>حذف آمن للسجل بعد الاعتماد، دون محو سجل التدقيق أو القيود التاريخية.</span>';
   const labels = {
     name: 'الاسم', status: 'الحالة', primaryContact: 'جهة الاتصال', industry: 'النشاط',
     phone: 'الهاتف', email: 'البريد', notes: 'الملاحظات', clientId: 'العميل',
@@ -744,7 +834,7 @@ function formatDateTime(value) {
   if (!value) return 'غير محدد';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return escapeHtml(value);
-  return new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
 function renderClients() {
@@ -814,14 +904,17 @@ function projectCard(project) {
 }
 
 function entityActions(entityType, entity) {
-  if (!canManageRecords()) return '';
+  const viewButton = `<button class="ghost-button" type="button" data-action="view-entity" data-entity-type="${entityType}" data-id="${escapeHtml(entity.id)}">عرض التفاصيل</button>`;
+  if (!canManageRecords()) return `<div class="entity-actions">${viewButton}</div>`;
   const pending = pendingForEntity(entityType, entity.id);
   const suffix = currentRole === 'ASSISTANT_MANAGER' ? ' (طلب اعتماد)' : '';
   return `
     <div class="entity-actions">
+      ${viewButton}
       <button class="ghost-button" type="button" data-action="edit-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تعديل${suffix}</button>
       <button class="ghost-button" type="button" data-action="status-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تغيير الحالة${suffix}</button>
       <button class="ghost-button ${entity.archived ? '' : 'danger-button'}" type="button" data-action="${entity.archived ? 'restore' : 'archive'}-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending ? 'disabled' : ''}>${entity.archived ? 'استعادة' : 'أرشفة'}${suffix}</button>
+      ${entity.archived ? '' : `<button class="ghost-button danger-button" type="button" data-action="delete-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending ? 'disabled' : ''}>حذف آمن${suffix}</button>`}
     </div>
   `;
 }
@@ -869,14 +962,15 @@ function projectFilter() {
 
 function filteredClients() {
   const query = searchValue().trim().toLowerCase();
-  if (!query) return [...state.clients].reverse();
-  return [...state.clients].reverse().filter((client) => [client.name, client.primaryContact, client.email, client.phone].some((value) => String(value || '').toLowerCase().includes(query)));
+  const dated = UI.filterRows(state.clients, ['createdAt', 'updatedAt']).reverse();
+  if (!query) return dated;
+  return dated.filter((client) => [client.name, client.primaryContact, client.email, client.phone].some((value) => String(value || '').toLowerCase().includes(query)));
 }
 
 function filteredProjects() {
   const query = searchValue().trim().toLowerCase();
   const filter = projectFilter();
-  return [...state.projects].reverse().filter((project) => {
+  return UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).reverse().filter((project) => {
     const client = state.clients.find((item) => item.id === project.clientId);
     const queryMatches = !query || [project.name, project.accountManager, client?.name].some((value) => String(value || '').toLowerCase().includes(query));
     const statusMatches = filter === 'ALL' || recordStatus(project) === filter;
@@ -901,14 +995,14 @@ function priorityLabel(priority) {
 }
 
 function money(value, currency = 'EGP') {
-  return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: currency || 'EGP', maximumFractionDigits: 0 }).format(Number(value || 0));
+  return new Intl.NumberFormat('ar-EG-u-nu-latn', { style: 'currency', currency: currency || 'EGP', maximumFractionDigits: 0 }).format(Number(value || 0));
 }
 
 function formatDate(value) {
   if (!value) return 'غير محدد';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return escapeHtml(value);
-  return new Intl.DateTimeFormat('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat('ar-EG-u-nu-latn', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
 }
 
 function findEntity(entityType, entityId) {
@@ -1157,7 +1251,7 @@ async function requestOrApplyChange(entityType, entityId, action, payload, descr
   if (!canManageRecords()) throw new Error('ليس لديك صلاحية تعديل هذا السجل.');
   const apiPayload = serverPayload(entityType, entityId, action, payload);
 
-  if (currentRole === 'ASSISTANT_MANAGER') {
+  if (currentRole === 'ASSISTANT_MANAGER' || action !== 'CREATE') {
     await ANCAuth.request('approvals', 'POST', {
       entityType,
       entityId,
@@ -1200,6 +1294,12 @@ function applyApprovedChange(entityType, entityId, action, payload) {
     record.status = entityType === 'client' ? 'INACTIVE' : 'CANCELLED';
     record.updatedAt = now;
   }
+  if (action === 'DELETE') {
+    record.archived = true;
+    record.archivedAt = now;
+    record.status = entityType === 'client' ? 'INACTIVE' : 'CANCELLED';
+    record.updatedAt = now;
+  }
   if (action === 'RESTORE') {
     record.archived = false;
     record.archivedAt = '';
@@ -1223,6 +1323,19 @@ async function archiveOrRestoreEntity(entityType, entityId, restore) {
   await requestOrApplyChange(entityType, entityId, restore ? 'RESTORE' : 'ARCHIVE', record, `${verb} «${record.name}»`);
 }
 
+async function deleteEntity(entityType, entityId) {
+  const record = findEntity(entityType, entityId);
+  if (!record || record.archived) return;
+  if (entityType === 'client') {
+    const activeProjects = state.projects.some((project) => project.clientId === entityId && !project.archived && !['COMPLETED', 'CANCELLED'].includes(project.status));
+    if (activeProjects) {
+      showToast('تعذر حذف العميل', 'أوقف أو أكمل أو أرشف المشروعات المفتوحة المرتبطة به أولًا.', { icon: 'alerts' });
+      return;
+    }
+  }
+  if (!window.confirm(`هل تريد إرسال طلب حذف آمن لـ«${record.name}»؟ لن يُمحى سجل التدقيق أو التاريخ المرتبط.`)) return;
+  await requestOrApplyChange(entityType, entityId, 'DELETE', record, `حذف آمن لـ«${record.name}»`);
+}
 async function reviewApproval(requestId, decision) {
   if (!canReviewApprovals()) return;
   const request = state.approvals.find((item) => item.id === requestId);
@@ -1316,7 +1429,7 @@ async function installApp() {
 
 function registerServiceWorker() {
   if (!navigator.serviceWorker?.register || location.protocol === 'file:') return;
-  navigator.serviceWorker.register('/service-worker.js').then((registration) => {
+  navigator.serviceWorker.register(appPath('service-worker.js'), { scope: APP_BASE_PATH }).then((registration) => {
     registration.addEventListener('updatefound', () => {
       const worker = registration.installing;
       worker?.addEventListener('statechange', () => {
@@ -1347,12 +1460,19 @@ document.addEventListener('click', async (event) => {
   if (action === 'go-approvals') navigate('approvals');
   if (action === 'go-dashboard') navigate('dashboard');
 
+  if (action === 'view-entity') {
+    const entityType = actionTarget.dataset.entityType || 'project';
+    const entity = findEntity(entityType, entityId);
+    if (entity) UI.openDetails(entity, [], entity.name || 'تفاصيل السجل');
+  }
   if (action === 'edit-client') openEntityDialog('client', entityId);
   if (action === 'edit-project') openEntityDialog('project', entityId);
   if (action === 'status-client') openStatusDialog('client', entityId);
   if (action === 'status-project') openStatusDialog('project', entityId);
   if (action === 'archive-client') await archiveOrRestoreEntity('client', entityId, false);
   if (action === 'archive-project') await archiveOrRestoreEntity('project', entityId, false);
+  if (action === 'delete-client') await deleteEntity('client', entityId);
+  if (action === 'delete-project') await deleteEntity('project', entityId);
   if (action === 'restore-client') await archiveOrRestoreEntity('client', entityId, true);
   if (action === 'restore-project') await archiveOrRestoreEntity('project', entityId, true);
   if (action === 'approve-approval') await reviewApproval(entityId, 'APPROVED');
@@ -1387,6 +1507,7 @@ document.querySelector('#sheet-backdrop').addEventListener('click', closeMoreShe
 document.querySelector('#dialog-close-button').addEventListener('click', () => dialog.close());
 document.querySelector('#dialog-cancel-button').addEventListener('click', () => dialog.close());
 document.querySelector('#theme-button').addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+document.querySelector('#language-button').addEventListener('click', () => applyLanguage(document.documentElement.lang === 'ar' ? 'en' : 'ar'));
 document.querySelector('#install-button').addEventListener('click', installApp);
 document.querySelector('#quick-add-button').addEventListener('click', () => openEntityDialog(currentRoute === 'clients' ? 'client' : 'project'));
 
@@ -1481,7 +1602,9 @@ async function showLogin(message = '') {
 
 async function startAuthenticatedApp(user) {
   currentUser = user;
+  window.ANC_CURRENT_USER = user;
   currentRole = roleFromUser(user);
+  pagePolicies = (await API.get('page.policies').catch(() => ({ policies: [] }))).policies || [];
   currentRoute = routeFromLocation();
   await loadProductionState();
   document.querySelector('#auth-gate').hidden = true;
@@ -1490,9 +1613,11 @@ async function startAuthenticatedApp(user) {
   renderPage();
   registerServiceWorker();
   finishBootScreen();
+  UI.showPendingNotifications?.();
 }
 
 async function bootstrapProduction() {
+  applyLanguage(localStorage.getItem(LANGUAGE_KEY) || 'ar');
   applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
   setAuthState('loading');
   try {
@@ -1512,7 +1637,7 @@ async function bootstrapProduction() {
 
 document.querySelector('#logout-button').addEventListener('click', async () => {
   await ANCAuth.logout();
-  location.replace('/');
+  location.replace(APP_BASE_PATH);
 });
 
 document.querySelector('#auth-retry-button').addEventListener('click', async () => {

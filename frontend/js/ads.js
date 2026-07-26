@@ -129,7 +129,7 @@
       "<div class='table-actions'>",
       !archived && !cancelled ? "<button class='btn' data-ad-edit='" + esc(row['Ad ID']) + "'>تعديل</button>" : '',
       "<button class='btn' data-ad-archive='" + esc(row['Ad ID']) + "' data-archived='" + (archived ? '0' : '1') + "'>" + (archived ? 'استعادة' : 'أرشفة') + "</button>",
-      !cancelled ? "<button class='btn danger-button' data-ad-cancel='" + esc(row['Ad ID']) + "'>إلغاء</button>" : '',
+      !cancelled ? "<button class='btn danger-button' data-ad-cancel='" + esc(row['Ad ID']) + "'>حذف / إلغاء</button>" : '',
       "</div>"
     ].join('');
   }
@@ -143,7 +143,7 @@
       API.get('projects').catch(() => ({ projects:[] })),
       API.get('bank.accounts').catch(() => ({ accounts:[] }))
     ]);
-    const ads = results[0].ads || [];
+    const ads = UI.filterRows(results[0].ads || [], ['Created At', 'Updated At']);
     adSettings = results[1].settings || {};
     const context = {
       clients: results[2].clients || [],
