@@ -70,6 +70,34 @@ test('safe delete is visible across managed records and always requests approval
   assert.match(worker, /INVOICE_HAS_PAYMENTS/);
   assert.match(worker, /\["ARCHIVE", "DELETE"\]\.includes\(action\)/);
 });
+test('row notes use the most specific record identifier instead of the parent client', async () => {
+  const [ui, worker] = await Promise.all([
+    read('frontend/js/ui.js'),
+    read('worker/src/index.js')
+  ]);
+
+  const taskIndex = ui.indexOf("['Task ID','TASK']");
+  const projectIndex = ui.indexOf("['Project ID','PROJECT']");
+  const clientIndex = ui.indexOf("['Client ID','CLIENT']");
+  assert.ok(taskIndex >= 0 && projectIndex > taskIndex && clientIndex > projectIndex);
+  assert.match(worker, /WHERE n\.entity_type=\? AND n\.entity_id=\? AND n\.archived=0/);
+  assert.match(worker, /\[entityType, entityId\]/);
+});
+
+test('primary manager can permanently delete popup notifications and their receipts', async () => {
+  const [worker, settings] = await Promise.all([
+    read('worker/src/index.js'),
+    read('frontend/js/settings.js')
+  ]);
+
+  assert.match(worker, /async function deletePopupNotification/);
+  assert.match(worker, /DELETE FROM popup_notification_receipts WHERE notification_id=\?/);
+  assert.match(worker, /DELETE FROM popup_notifications WHERE notification_id=\?/);
+  assert.match(worker, /"DELETE notifications": route\(deletePopupNotification, "SYSTEM", "EDIT"\)/);
+  assert.match(worker, /POPUP_NOTIFICATION_DELETED/);
+  assert.match(settings, /data-notification-delete/);
+  assert.match(settings, /API\.delete\('notifications', \{ notificationId \}\)/);
+});
 test('money formatter accepts a table row without treating it as a currency code', async () => {
   const ui = await read('frontend/js/ui.js');
 

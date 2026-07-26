@@ -1891,6 +1891,24 @@ async function updatePopupNotification({ env, actor, data }) {
   return { notification: toApi(saved) };
 }
 __name(updatePopupNotification, "updatePopupNotification");
+async function deletePopupNotification({ env, actor, data }) {
+  requirePrimaryManager(actor);
+  required(data, ["notificationId"]);
+  const notificationId = text(data.notificationId);
+  const existing = await first(env, "SELECT * FROM popup_notifications WHERE notification_id=?", [notificationId]);
+  if (!existing) throw new ApiError("NOTIFICATION_NOT_FOUND", "Notification not found.", {}, 404);
+  await batch(env, [
+    statement(env, "DELETE FROM popup_notification_receipts WHERE notification_id=?", [notificationId]),
+    statement(env, "DELETE FROM popup_notifications WHERE notification_id=?", [notificationId])
+  ]);
+  await audit(env, actor, "POPUP_NOTIFICATION_DELETED", "NOTIFICATION", notificationId, {
+    titleAr: existing.title_ar,
+    titleEn: existing.title_en,
+    audience: existing.audience
+  });
+  return { deleted: true, notificationId };
+}
+__name(deletePopupNotification, "deletePopupNotification");
 async function acknowledgePopupNotification({ env, actor, data }) {
   required(data, ["notificationId"]);
   const notification = await first(env, "SELECT * FROM popup_notifications WHERE notification_id=? AND active=1", [data.notificationId]);
@@ -2159,6 +2177,7 @@ var ROUTES = Object.freeze({
   "GET notifications.manage": route(listManagedNotifications, "SYSTEM", "VIEW"),
   "POST notifications": route(createPopupNotification, "SYSTEM", "EDIT"),
   "PUT notifications": route(updatePopupNotification, "SYSTEM", "EDIT"),
+  "DELETE notifications": route(deletePopupNotification, "SYSTEM", "EDIT"),
   "POST notifications.ack": route(acknowledgePopupNotification, "PORTALS", "EDIT"),
   "GET service.requests": route(listServiceRequests, "PORTALS", "VIEW"),
   "GET service.request": route(getServiceRequest, "PORTALS", "VIEW"),
