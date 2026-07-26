@@ -100,7 +100,11 @@
           allowed: select.value === '1',
           reason: 'Custom override from user management'
         }));
-        await API.post('users.permissions', { employeeId: user['Employee ID'], permissions });
+        await API.post('users.permissions', {
+          userId: user['User ID'],
+          employeeId: user['Employee ID'],
+          permissions
+        });
         UI.toast('تم تحديث الصلاحيات.');
         modal.remove();
         await reload();

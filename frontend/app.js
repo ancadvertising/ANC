@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'anc-erp-staging-data-v2';
 const LEGACY_STORAGE_KEY = 'anc-erp-staging-data-v1';
 const THEME_KEY = 'anc-erp-theme';
+const LANGUAGE_KEY = 'anc-erp-language';
 const ROLE_KEY = 'anc-erp-preview-role';
 const CLIENT_PREVIEW_KEY = 'anc-erp-preview-client';
 const APP_BASE_PATH = (() => {
@@ -167,6 +168,44 @@ const moduleMaps = {
   ]
 };
 
+const languageCatalog = {
+  ar: {
+    groups: ['الإدارة','التنفيذ','المالية','النظام'],
+    pages: {
+      dashboard:['لوحة المؤشرات','نظرة عامة'], clients:['العملاء','إدارة علاقات العملاء'], projects:['المشروعات','إدارة العمل'], orders:['الطلبات','الخدمات'],
+      ads:['الإعلانات الممولة','Paid Media'], studio:['الاستوديو والإنتاج','Studio'], tasks:['المهام والتسليمات','Operations'], finance:['الفواتير والمدفوعات','Finance'],
+      banking:['البنك والحركات','Banking'], reports:['التقارير والربحية','Insights'], documents:['المستندات','Drive'], employees:['المستخدمون والصلاحيات','RBAC'],
+      approvals:['طلبات الاعتماد','Governance'], audit:['سجل النشاط','Security'], settings:['الإعدادات','System']
+    }
+  },
+  en: {
+    groups: ['Management','Delivery','Finance','System'],
+    pages: {
+      dashboard:['Dashboard','Overview'], clients:['Clients','CRM'], projects:['Projects','Work Management'], orders:['Requests','Services'],
+      ads:['Paid Ads','Paid Media'], studio:['Studio & Production','Studio'], tasks:['Tasks & Deliveries','Operations'], finance:['Invoices & Payments','Finance'],
+      banking:['Banking','Banking'], reports:['Reports & Profitability','Insights'], documents:['Documents','Drive'], employees:['Users & Permissions','RBAC'],
+      approvals:['Approvals','Governance'], audit:['Audit Log','Security'], settings:['Settings','System']
+    }
+  }
+};
+
+function applyLanguage(language) {
+  const selected = language === 'en' ? 'en' : 'ar';
+  localStorage.setItem(LANGUAGE_KEY, selected);
+  document.documentElement.lang = selected;
+  document.documentElement.dir = selected === 'ar' ? 'rtl' : 'ltr';
+  const catalog = languageCatalog[selected];
+  navigationGroups.forEach((group,index) => {
+    group.label = catalog.groups[index];
+    group.items.forEach(item => { if (catalog.pages[item.id]) item.label = catalog.pages[item.id][0]; });
+  });
+  Object.entries(catalog.pages).forEach(([key,value]) => {
+    if (pageMetadata[key]) { pageMetadata[key].title = value[0]; pageMetadata[key].eyebrow = value[1]; }
+  });
+  const button = document.querySelector('#language-button');
+  if (button) button.textContent = selected === 'ar' ? 'EN' : 'AR';
+  if (currentUser) renderPage();
+}
 const app = document.querySelector('#app');
 const content = document.querySelector('#page-content');
 const title = document.querySelector('#page-title');
@@ -179,8 +218,8 @@ const formError = document.querySelector('#form-error');
 const roleRoutes = Object.freeze({
   PRIMARY_MANAGER: Object.keys(pageMetadata),
   ASSISTANT_MANAGER: Object.keys(pageMetadata),
-  EMPLOYEE: ['dashboard', 'tasks', 'studio', 'ads', 'documents'],
-  CLIENT: ['dashboard', 'projects', 'orders', 'finance', 'documents']
+  EMPLOYEE: ['dashboard', 'tasks', 'studio', 'ads'],
+  CLIENT: ['dashboard', 'projects', 'orders', 'finance']
 });
 
 let currentUser = null;
@@ -192,6 +231,7 @@ let deferredInstallPrompt = null;
 let serverDashboard = null;
 let portalData = null;
 let employeePortal = null;
+let pagePolicies = [];
 let state = { version: 3, clients: [], projects: [], approvals: [] };
 
 function svg(name, className = '') {
@@ -321,11 +361,19 @@ async function loadProductionState() {
 }
 
 function allowedRoutes() {
-  if (currentRole !== 'EMPLOYEE') return roleRoutes[currentRole] || roleRoutes.EMPLOYEE;
-  const role = String(currentUser?.role || '').toUpperCase();
-  if (role === 'MEDIA_BUYER') return ['dashboard', 'tasks', 'ads', 'documents'];
-  if (role === 'CREATIVE' || role === 'STUDIO') return ['dashboard', 'tasks', 'studio', 'documents'];
-  return ['dashboard', 'tasks', 'documents'];
+  let routes;
+  if (currentRole !== 'EMPLOYEE') routes = [...(roleRoutes[currentRole] || roleRoutes.EMPLOYEE)];
+  else {
+    const role = String(currentUser?.role || '').toUpperCase();
+    if (role === 'MEDIA_BUYER') routes = ['dashboard', 'tasks', 'ads'];
+    else if (role === 'CREATIVE' || role === 'STUDIO') routes = ['dashboard', 'tasks', 'studio'];
+    else routes = ['dashboard', 'tasks'];
+  }
+  const portal = ['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole) ? 'ADMIN' : currentRole === 'CLIENT' ? 'CLIENT' : 'EMPLOYEE';
+  const policies = new Map(pagePolicies.filter(policy => policy.Portal === portal).map(policy => [policy['Page Key'], policy]));
+  routes = routes.filter(route => policies.get(route)?.Visibility !== 'HIDDEN');
+  if (!['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole)) routes = routes.filter(route => route !== 'documents');
+  return [...new Set(routes)];
 }
 
 function isRouteAllowed(route) {
@@ -357,6 +405,23 @@ function routeFromLocation() {
   return pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
 }
 
+function activePagePolicy() {
+  const portal = ['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole) ? 'ADMIN' : currentRole === 'CLIENT' ? 'CLIENT' : 'EMPLOYEE';
+  return pagePolicies.find(policy => policy.Portal === portal && policy['Page Key'] === currentRoute) || null;
+}
+
+function refreshPageAccess() {
+  const policy = activePagePolicy();
+  const primarySettingsRecovery = currentRole === 'PRIMARY_MANAGER' && currentRoute === 'settings';
+  window.ANC_PAGE_READ_ONLY = !primarySettingsRecovery && policy?.['Access Level'] === 'READ_ONLY';
+  window.ANC_APPLY_PAGE_ACCESS = root => {
+    if (!root || !window.ANC_PAGE_READ_ONLY) return;
+    if (!root.querySelector('[data-read-only-banner]')) root.insertAdjacentHTML('afterbegin','<div class="alert warning" data-read-only-banner>هذه الصفحة مضبوطة للعرض فقط. عمليات الإضافة والتعديل والأرشفة معطلة لهذا البورتال.</div>');
+    root.querySelectorAll('button, input, select, textarea').forEach(element => {
+      element.disabled = true;
+    });
+  };
+}
 function navigate(route, options = {}) {
   const safeRoute = pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
   if (!options.replace && safeRoute !== currentRoute) history.pushState({}, '', routePath(safeRoute));
@@ -454,6 +519,7 @@ function renderPage() {
     history.replaceState({}, '', routePath('dashboard'));
   }
   window.UI?.mountDateFilter?.(currentRole, () => renderPage());
+  refreshPageAccess();
   setHeader();
   renderNavigation();
   updateRoleInterface();
@@ -465,6 +531,7 @@ function renderPage() {
   else if (currentRoute === 'approvals') content.innerHTML = renderApprovals();
   else if (currentRoute === 'documents') renderLiveModule('documents');
   else if (currentRoute === 'tasks' && currentRole === 'EMPLOYEE') content.innerHTML = renderEmployeeTasks();
+  else if (currentRoute === 'orders') renderLiveModule('requests');
   else if (currentRole === 'CLIENT') content.innerHTML = renderClientModule(currentRoute);
   else if (currentRoute === 'tasks') renderLiveModule('operations');
   else if (currentRoute === 'ads') renderLiveModule('ads');
@@ -474,6 +541,7 @@ function renderPage() {
   else if (currentRoute === 'employees') renderLiveModule('users');
   else if (currentRoute === 'settings') renderLiveModule('settings');
   else content.innerHTML = renderModuleMap(currentRoute);
+  queueMicrotask(() => window.ANC_APPLY_PAGE_ACCESS?.(content));
 }
 
 function renderDashboard() {
@@ -1181,7 +1249,7 @@ async function requestOrApplyChange(entityType, entityId, action, payload, descr
   if (!canManageRecords()) throw new Error('ليس لديك صلاحية تعديل هذا السجل.');
   const apiPayload = serverPayload(entityType, entityId, action, payload);
 
-  if (currentRole === 'ASSISTANT_MANAGER') {
+  if (currentRole === 'ASSISTANT_MANAGER' || action !== 'CREATE') {
     await ANCAuth.request('approvals', 'POST', {
       entityType,
       entityId,
@@ -1416,6 +1484,7 @@ document.querySelector('#sheet-backdrop').addEventListener('click', closeMoreShe
 document.querySelector('#dialog-close-button').addEventListener('click', () => dialog.close());
 document.querySelector('#dialog-cancel-button').addEventListener('click', () => dialog.close());
 document.querySelector('#theme-button').addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+document.querySelector('#language-button').addEventListener('click', () => applyLanguage(document.documentElement.lang === 'ar' ? 'en' : 'ar'));
 document.querySelector('#install-button').addEventListener('click', installApp);
 document.querySelector('#quick-add-button').addEventListener('click', () => openEntityDialog(currentRoute === 'clients' ? 'client' : 'project'));
 
@@ -1510,7 +1579,9 @@ async function showLogin(message = '') {
 
 async function startAuthenticatedApp(user) {
   currentUser = user;
+  window.ANC_CURRENT_USER = user;
   currentRole = roleFromUser(user);
+  pagePolicies = (await API.get('page.policies').catch(() => ({ policies: [] }))).policies || [];
   currentRoute = routeFromLocation();
   await loadProductionState();
   document.querySelector('#auth-gate').hidden = true;
@@ -1519,9 +1590,11 @@ async function startAuthenticatedApp(user) {
   renderPage();
   registerServiceWorker();
   finishBootScreen();
+  UI.showPendingNotifications?.();
 }
 
 async function bootstrapProduction() {
+  applyLanguage(localStorage.getItem(LANGUAGE_KEY) || 'ar');
   applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
   setAuthState('loading');
   try {

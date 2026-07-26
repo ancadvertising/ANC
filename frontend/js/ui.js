@@ -94,6 +94,8 @@ window.UI = (() => {
       if (event.target === root || event.target.closest('[data-close-drawer]')) root.remove();
     });
     document.body.append(root);
+    root.querySelector('.record-drawer')?.insertAdjacentHTML('beforeend', '<section class="record-notes" data-record-notes></section>');
+    loadRecordNotes(root, row);
     root.querySelector('[data-close-drawer]')?.focus();
   }
 
@@ -128,7 +130,9 @@ window.UI = (() => {
   }
 
   function setMain(html) {
-    document.querySelector('#page-content').innerHTML = html;
+    const root = document.querySelector('#page-content');
+    root.innerHTML = html;
+    window.ANC_APPLY_PAGE_ACCESS?.(root);
   }
 
   function error(error) {
@@ -269,6 +273,99 @@ window.UI = (() => {
     }));
   }
 
+
+  function inferEntity(row) {
+    const keys = [
+      ['Client ID','CLIENT'],['Project ID','PROJECT'],['Task ID','TASK'],['Ad ID','AD'],
+      ['Studio Job ID','STUDIO_JOB'],['User ID','USER'],['Document ID','DOCUMENT'],
+      ['Invoice ID','INVOICE'],['Bank Account ID','BANK_ACCOUNT'],['Expense ID','EXPENSE'],
+      ['Request ID','SERVICE_REQUEST']
+    ];
+    const match = keys.find(([key]) => row?.[key]);
+    return match ? { entityId: String(row[match[0]]), entityType: match[1] } : null;
+  }
+
+  async function loadRecordNotes(root, row) {
+    const entity = inferEntity(row);
+    const host = root.querySelector('[data-record-notes]');
+    if (!entity || !host) { if (host) host.remove(); return; }
+    host.innerHTML = '<div class="skeleton"></div>';
+    try {
+      const [notesData, labelsData] = await Promise.all([
+        API.get('notes', entity),
+        API.get('note.labels').catch(() => ({ labels: [] }))
+      ]);
+      const notes = notesData.notes || [];
+      const labels = labelsData.labels || [];
+      host.innerHTML = `
+        <div class="record-notes-header"><div><span class="page-eyebrow">Notes</span><h3>الملاحظات</h3></div><span class="badge">${number(notes.length)}</span></div>
+        <div class="record-notes-list">${notes.length ? notes.map(note => {
+          const noteLabels = (note.labels || []).map(label => `<span class="note-label" style="--label-color:${escape(label.color)}">${escape(document.documentElement.lang === 'en' ? label.nameEn : label.nameAr)}</span>`).join('');
+          return `<article class="record-note"><div>${noteLabels}</div><p>${escape(note.Body)}</p><small>${escape(note['Created By Name'])} · ${date(note['Created At'])}</small></article>`;
+        }).join('') : '<p class="muted">لا توجد ملاحظات بعد.</p>'}</div>
+        <form class="record-note-form"><textarea name="body" required maxlength="5000" placeholder="اكتب ملاحظة..."></textarea>
+          <div class="note-label-picker">${labels.map(label => `<label class="note-label" style="--label-color:${escape(label.Color)}"><input type="checkbox" name="labelId" value="${escape(label['Label ID'])}">${escape(document.documentElement.lang === 'en' ? label['Name En'] : label['Name Ar'])}</label>`).join('')}</div>
+          <button class="btn btn-primary" type="submit">إضافة الملاحظة</button>
+        </form>`;
+      const form = host.querySelector('form');
+      form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+          const labelIds = [...form.querySelectorAll('input[name="labelId"]:checked')].map(input => input.value);
+          await API.post('notes', { ...entity, body: form.elements.body.value, labelIds });
+          await loadRecordNotes(root, row);
+          toast('تمت إضافة الملاحظة.');
+        } catch (error) {
+          toast(error.message, 'error');
+          button.disabled = false;
+        }
+      });
+    } catch (error) {
+      host.innerHTML = `<div class="alert danger">${escape(error.message)}</div>`;
+    }
+  }
+
+  async function requestApproval(entityType, entityId, action, payload, description) {
+    if (entityType && typeof entityType === 'object') {
+      ({ entityType, entityId, action, payload, description } = entityType);
+    }
+    const result = await API.post('approvals', { entityType, entityId, action, payload: payload || {}, description });
+    toast('تم إرسال طلب الاعتماد إلى المدير الأساسي.');
+    return result;
+  }
+
+  function sessionId() {
+    let value = sessionStorage.getItem('anc-session-id');
+    if (!value) {
+      value = globalThis.crypto?.randomUUID?.() || String(Date.now());
+      sessionStorage.setItem('anc-session-id', value);
+    }
+    return value;
+  }
+
+  async function showPendingNotifications() {
+    const data = await API.get('notifications', { sessionId: sessionId() }).catch(() => ({ notifications: [] }));
+    for (const notification of data.notifications || []) {
+      const language = document.documentElement.lang === 'en' ? 'en' : 'ar';
+      const requiresAck = Boolean(notification['Requires Ack']);
+      const modalRoot = modal(language === 'en' ? notification['Title En'] : notification['Title Ar'], `
+        <div class="popup-notification"><p>${escape(language === 'en' ? notification['Message En'] : notification['Message Ar'])}</p>
+        ${requiresAck ? '<p class="alert warning">يجب الموافقة على هذا الإشعار للمتابعة.</p>' : ''}
+        <div class="actions"><button class="btn btn-primary" data-notification-confirm>${requiresAck ? 'أوافق' : 'حسناً'}</button></div></div>`);
+      if (requiresAck) modalRoot.querySelectorAll('[data-close]').forEach(button => button.remove());
+      await new Promise(resolve => {
+        modalRoot.querySelector('[data-notification-confirm]').addEventListener('click', async () => {
+          try {
+            await API.post('notifications.ack', { notificationId: notification['Notification ID'], sessionId: sessionId(), acknowledged: requiresAck });
+            modalRoot.remove();
+            resolve();
+          } catch (error) { toast(error.message, 'error'); }
+        });
+      });
+    }
+  }
   document.addEventListener('click', event => {
     if (event.target.closest('button,a,input,select,textarea,label')) return;
     const target = event.target.closest('[data-row-detail-id]');
@@ -305,6 +402,8 @@ window.UI = (() => {
     openDetails,
     filterRows,
     currentDateFilter,
-    mountDateFilter
+    mountDateFilter,
+    requestApproval,
+    showPendingNotifications
   };
 })();

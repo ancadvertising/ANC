@@ -1,5 +1,10 @@
 (() => {
   const esc = UI.escape;
+  const isManagement = () => {
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER'].includes(role);
+  };
 
   function option(value, label, selected, extra) {
     return "<option value='" + esc(value) + "'" + (selected ? " selected" : "") + (extra || '') + ">" + esc(label) + "</option>";
@@ -15,6 +20,53 @@
       "</select></div><div class='field'><label>القيمة</label><input name='amount' type='number' min='.01' step='.01' required></div><div class='field wide'><label>الوصف</label><input name='description' value='إيداع بنكي'></div><div class='wide actions'><button class='btn btn-primary' type='submit'>تسجيل الإيداع</button></div></form>";
   }
 
+  function expenseForm(expense, clients, projects, accounts) {
+    expense = expense || {};
+    const today = new Date().toISOString().slice(0,10);
+    const clientId = expense['Client ID'] || '';
+    const projectId = expense['Project ID'] || '';
+    const clientsHtml = ["<option value=''>غير مرتبط بعميل</option>"].concat(clients.map(row => option(row['Client ID'],row['Client Name'],row['Client ID'] === clientId))).join('');
+    const projectsHtml = ["<option value=''>غير مرتبط بمشروع</option>"].concat(projects.map(row => option(row['Project ID'],row['Project Name'],row['Project ID'] === projectId," data-client='" + esc(row['Client ID']) + "'"))).join('');
+    const accountsHtml = ["<option value=''>اختر الحساب</option>"].concat(accounts.filter(row => String(row.Active).toLowerCase() !== 'false').map(row => option(row['Bank Account ID'],row['Account Name'] + ' — ' + UI.money(row['Current Balance']),false))).join('');
+    return [
+      "<form class='form-grid expense-form'>",
+      "<div class='field'><label>التاريخ</label><input name='expenseDate' type='date' required value='" + esc(String(expense['Expense Date'] || today).slice(0,10)) + "'></div>",
+      "<div class='field'><label>التصنيف</label><input name='category' required value='" + esc(expense.Category || '') + "' placeholder='تشغيل / استوديو / أدوات'></div>",
+      "<div class='field wide'><label>الوصف</label><input name='description' required value='" + esc(expense.Description || '') + "'></div>",
+      "<div class='field'><label>المبلغ</label><input name='amount' type='number' min='.01' step='.01' required value='" + esc(expense.Amount || '') + "'></div>",
+      "<div class='field'><label>العملة</label><input name='currency' value='" + esc(expense.Currency || 'EGP') + "'></div>",
+      "<div class='field'><label>العميل</label><select name='clientId'>" + clientsHtml + "</select></div>",
+      "<div class='field'><label>المشروع</label><select name='projectId'>" + projectsHtml + "</select></div>",
+      "<div class='field'><label>المورد</label><input name='vendor' value='" + esc(expense.Vendor || '') + "'></div>",
+      "<div class='field'><label>طريقة الدفع</label><input name='paymentMethod' value='" + esc(expense['Payment Method'] || '') + "'></div>",
+      expense['Expense ID'] ? '' : "<div class='field'><label>الحساب البنكي</label><select name='bankAccountId'>" + accountsHtml + "</select></div>",
+      expense['Expense ID'] ? '' : "<div class='field wide'><label class='check-row'><input type='checkbox' name='autoDebit'> خصم المبلغ تلقائياً من الحساب البنكي المحدد</label></div>",
+      "<div class='wide actions'><button class='btn btn-primary' type='submit'>" + (expense['Expense ID'] ? 'إرسال التعديل للاعتماد' : 'تسجيل المصروف') + "</button></div>",
+      "</form>"
+    ].join('');
+  }
+
+  function bindExpenseProject(form) {
+    const client = form.elements.clientId;
+    const project = form.elements.projectId;
+    const update = () => {
+      Array.from(project.options).forEach(item => {
+        if (!item.value) return;
+        item.hidden = !!client.value && item.dataset.client !== client.value;
+        item.disabled = item.hidden;
+      });
+      if (project.selectedOptions[0]?.disabled) project.value = '';
+    };
+    client.addEventListener('change',update);
+    update();
+  }
+
+  function expenseActions(_, row) {
+    return "<div class='table-actions'>" +
+      "<button class='btn' data-expense-edit='" + esc(row['Expense ID']) + "'>تعديل</button>" +
+      "<button class='btn danger-button' data-expense-archive='" + esc(row['Expense ID']) + "'>أرشفة</button>" +
+    "</div>";
+  }
   function projectInvoiceForm(clients, projects) {
     const today = new Date().toISOString().slice(0,10);
     const clientOptions = ["<option value=''>اختر العميل</option>"].concat(clients.map(row => option(row['Client ID'],row['Client Name'],false))).join('');
@@ -124,13 +176,14 @@
   }
 
   async function load() {
+    const canManage = isManagement();
     const results = await Promise.all([
       API.get('invoices'),
       API.get('payments'),
-      API.get('expenses'),
-      API.get('bank.accounts'),
-      API.get('clients'),
-      API.get('projects')
+      canManage ? API.get('expenses') : Promise.resolve({ expenses: [] }),
+      canManage ? API.get('bank.accounts') : Promise.resolve({ accounts: [] }),
+      canManage ? API.get('clients') : Promise.resolve({ clients: [] }),
+      canManage ? API.get('projects') : Promise.resolve({ projects: [] })
     ]);
     const invoices = UI.filterRows(results[0].invoices || [], ['Issue Date', 'Due Date', 'Created At', 'Updated At']);
     const payments = UI.filterRows(results[1].payments || [], ['Payment Date', 'Created At']);
@@ -186,15 +239,73 @@
         {key:'Expense Date',label:'التاريخ',render:UI.date},
         {key:'Category',label:'التصنيف'},
         {key:'Amount',label:'القيمة',render:UI.money},
-        {key:'Vendor',label:'المورد'}
+        {key:'Vendor',label:'المورد'},
+        {key:'Expense ID',label:'الإجراءات',render:expenseActions}
       ]) +
       "</article></section>"
     );
 
+    if (!canManage) {
+      document.querySelector('#new-account')?.closest('section')?.remove();
+      document.querySelector('#new-invoice')?.remove();
+      const expenseCard = Array.from(document.querySelectorAll('.grid.two .card')).find(card => card.querySelector('h2')?.textContent.trim() === 'المصروفات');
+      expenseCard?.remove();
+    }
+
     const reload = () => load();
-    document.querySelector('#new-account').addEventListener('click', () => openSimple('حساب بنكي جديد',accountForm(),'bank.accounts',reload));
+    const expenseCard = Array.from(document.querySelectorAll('.grid.two .card')).find(card => card.querySelector('h2')?.textContent.trim() === 'المصروفات');
+    if (canManage && expenseCard) {
+      const button = document.createElement('button');
+      button.className = 'btn btn-primary';
+      button.id = 'new-expense';
+      button.textContent = 'مصروف جديد';
+      expenseCard.querySelector('.card-header')?.append(button);
+    }
+
+    const openExpenseEditor = expense => {
+      const modal = UI.modal(expense ? 'تعديل المصروف' : 'مصروف جديد', expenseForm(expense,clients,projects,accounts));
+      const expenseTarget = modal.querySelector('form');
+      bindExpenseProject(expenseTarget);
+      const autoDebit = expenseTarget.elements.autoDebit;
+      if (autoDebit) {
+        const bank = expenseTarget.elements.bankAccountId;
+        const syncRequired = () => { bank.required = autoDebit.checked; };
+        autoDebit.addEventListener('change',syncRequired);
+        syncRequired();
+      }
+      expenseTarget.addEventListener('submit',event => {
+        event.preventDefault();
+        UI.submit(expenseTarget,async data => {
+          if (expense) data.expenseId = expense['Expense ID'];
+          data.autoDebit = Boolean(expenseTarget.elements.autoDebit?.checked);
+          const result = expense ? await API.put('expenses',data) : await API.post('expenses',data);
+          UI.toast(result.approval ? 'تم إرسال تعديل المصروف إلى المدير الأساسي للاعتماد.' : 'تم تسجيل المصروف وربطه بالمشروع.');
+          modal.remove();
+          await reload();
+        });
+      });
+    };
+    document.querySelector('#new-account')?.addEventListener('click', () => openSimple('حساب بنكي جديد',accountForm(),'bank.accounts',reload));
     document.querySelector('#new-deposit')?.addEventListener('click', () => openSimple('تسجيل إيداع',depositForm(accounts),'bank.deposit',reload));
-    document.querySelector('#new-invoice').addEventListener('click', () => {
+    document.querySelector('#new-expense')?.addEventListener('click', () => openExpenseEditor(null));
+    document.querySelectorAll('[data-expense-edit]').forEach(button => button.addEventListener('click',event => {
+      event.stopPropagation();
+      openExpenseEditor(expenses.find(row => row['Expense ID'] === button.dataset.expenseEdit));
+    }));
+    document.querySelectorAll('[data-expense-archive]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب أرشفة المصروف وعكس حركته البنكية للاعتماد. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        const result = await API.post('expenses.archive',{ expenseId:button.dataset.expenseArchive, reason:'Archive requested from expense list' });
+        UI.toast(result.approval ? 'تم إرسال طلب الأرشفة للاعتماد.' : 'تمت أرشفة المصروف وعكس الحركة البنكية.');
+        await reload();
+      } catch (error) {
+        UI.toast(error.message,'error');
+        button.disabled = false;
+      }
+    }));
+    document.querySelector('#new-invoice')?.addEventListener('click', () => {
       const modal = UI.modal('إنشاء فاتورة من مشروع',projectInvoiceForm(clients,projects));
       const form = modal.querySelector('form');
       bindInvoiceProject(form);

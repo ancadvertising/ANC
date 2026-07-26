@@ -66,6 +66,7 @@
               <span class="connection-label">متصل</span>
             </span>
             <button id="install-button" class="soft-button" type="button" hidden>تثبيت التطبيق</button>
+            <button id="language-button" class="soft-button" type="button" aria-label="تغيير اللغة">EN</button>
             <button id="theme-button" class="icon-button" type="button" aria-label="تغيير المظهر"></button>
             <button id="quick-add-button" class="primary-button" type="button">إضافة جديدة</button>
             <button id="logout-button" class="soft-button" type="button">تسجيل الخروج</button>
@@ -159,6 +160,7 @@
     <script src="/js/users.js"></script>
     <script src="/js/documents.js"></script>
     <script src="/js/settings.js"></script>
+    <script src="/js/requests.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

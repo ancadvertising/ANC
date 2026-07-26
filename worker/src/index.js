@@ -74,7 +74,13 @@ var DEFAULT_SYSTEM_SETTINGS = Object.freeze({
   "Invoice Tax Rate": "0",
   "Payment Terms Days": "14",
   "Invoice Footer": "This invoice excludes cancelled orders and cancelled services.",
-  "Default Currency": "EGP"
+  "Default Currency": "EGP",
+  "Default Interface Language": "ar",
+  "Primary Brand Color": "#a8f025",
+  "Secondary Brand Color": "#17191d",
+  "Company Logo URL": "",
+  "Custom Domain": "",
+  "Custom Domain Status": "NOT_CONFIGURED"
 });
 
 // src/lib/response.js
@@ -267,8 +273,8 @@ __name(verifyGoogleIdToken, "verifyGoogleIdToken");
 
 // src/auth/security.js
 var ROLE_RULES = Object.freeze({
-  MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT", "APPROVE"], ADS: ["VIEW", "CREATE", "EDIT", "APPROVE"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], STUDIO: ["VIEW", "CREATE", "EDIT"], USERS: ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE"], REPORTS: ["VIEW", "EXPORT"], PORTALS: ["VIEW", "CREATE", "EDIT", "DELETE"], APPROVALS: ["VIEW", "APPROVE"], SYSTEM: ["VIEW", "EDIT"] },
-  ASSISTANT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], TASKS: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW"], FINANCE: ["VIEW"], STUDIO: ["VIEW"], USERS: ["VIEW"], REPORTS: ["VIEW"], PORTALS: ["VIEW"], APPROVALS: ["VIEW", "CREATE"], SYSTEM: ["VIEW"] },
+  MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT", "APPROVE"], ADS: ["VIEW", "CREATE", "EDIT", "APPROVE"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], STUDIO: ["VIEW", "CREATE", "EDIT"], USERS: ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE"], REPORTS: ["VIEW", "EXPORT"], PORTALS: ["VIEW", "CREATE", "EDIT", "DELETE"], APPROVALS: ["VIEW", "CREATE", "APPROVE"], SYSTEM: ["VIEW", "EDIT"] },
+  ASSISTANT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], TASKS: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW"], FINANCE: ["VIEW"], STUDIO: ["VIEW"], USERS: ["VIEW"], REPORTS: ["VIEW"], PORTALS: ["VIEW", "CREATE", "EDIT"], APPROVALS: ["VIEW", "CREATE"], SYSTEM: ["VIEW"] },
   ACCOUNT_MANAGER: { DASHBOARD: ["VIEW"], CRM: ["VIEW", "CREATE", "EDIT"], TASKS: ["VIEW", "CREATE", "EDIT"], ADS: ["VIEW", "CREATE", "EDIT"], STUDIO: ["VIEW", "CREATE", "EDIT"], PORTALS: ["VIEW"] },
   FINANCE: { DASHBOARD: ["VIEW"], CRM: ["VIEW"], ADS: ["VIEW"], BANKING: ["VIEW", "CREATE", "EDIT", "APPROVE"], FINANCE: ["VIEW", "CREATE", "EDIT", "APPROVE", "EXPORT", "PRINT"], REPORTS: ["VIEW", "EXPORT", "PRINT"] },
   MEDIA_BUYER: { ADS: ["VIEW", "EDIT"], TASKS: ["VIEW", "EDIT"], PORTALS: ["VIEW", "EDIT"] },
@@ -276,7 +282,7 @@ var ROLE_RULES = Object.freeze({
   STUDIO: { TASKS: ["VIEW", "EDIT"], STUDIO: ["VIEW", "EDIT", "CREATE"], PORTALS: ["VIEW", "EDIT"] },
   EMPLOYEE: { PORTALS: ["VIEW", "EDIT"], TASKS: ["VIEW", "EDIT"] },
   VIEWER: { DASHBOARD: ["VIEW"] },
-  CLIENT: { PORTALS: ["VIEW"] }
+  CLIENT: { PORTALS: ["VIEW", "CREATE", "EDIT"] }
 });
 async function authenticate(env, token) {
   const claims = await verifyGoogleIdToken(token, env.GOOGLE_CLIENT_ID);
@@ -365,8 +371,8 @@ function monthly(invoices, expenses, payments) {
   return result;
 }
 __name(monthly, "monthly");
-async function dashboard({ env }) {
-  const [ads, invoices, payments, expenses, accounts, statements, clients, projects, tasks] = await Promise.all([
+async function dashboard({ env, actor }) {
+  let [ads, invoices, payments, expenses, accounts, statements, clients, projects, tasks] = await Promise.all([
     all(env, "SELECT * FROM paid_ads"),
     all(env, `SELECT * FROM invoices WHERE status != 'CANCELLED'`),
     all(env, "SELECT * FROM payments"),
@@ -377,6 +383,27 @@ async function dashboard({ env }) {
     all(env, "SELECT * FROM projects"),
     all(env, "SELECT * FROM tasks")
   ]);
+  if (actor?.userType === "CLIENT") {
+    ads = ads.filter((row) => row.client_id === actor.clientId);
+    invoices = invoices.filter((row) => row.client_id === actor.clientId);
+    payments = payments.filter((row) => row.client_id === actor.clientId);
+    expenses = [];
+    accounts = [];
+    statements = statements.filter((row) => row.client_id === actor.clientId);
+    clients = clients.filter((row) => row.client_id === actor.clientId);
+    projects = projects.filter((row) => row.client_id === actor.clientId);
+    tasks = [];
+  } else if (actor && !managementActor(actor) && !["FINANCE", "ACCOUNT_MANAGER"].includes(actor.role)) {
+    ads = actor.role === "MEDIA_BUYER" ? ads.filter((row) => row.employee_id === actor.employeeId || row.created_by === actor.email) : [];
+    invoices = [];
+    payments = [];
+    expenses = [];
+    accounts = [];
+    statements = [];
+    clients = [];
+    projects = [];
+    tasks = tasks.filter((row) => row.employee_id === actor.employeeId || email(row.assigned_email) === actor.email);
+  }
   const validAds = ads.filter((row) => row.status !== "CANCELLED");
   const revenue = sum(invoices, "amount") + sum(validAds, "sale_price");
   const adExpenses = sum(validAds, "base_spend") + sum(validAds, "internal_cost");
@@ -590,8 +617,8 @@ async function updateProject({ env, actor, data }) {
 __name(updateProject, "updateProject");
 
 // src/routes/approvals.js
-var APPROVAL_ENTITY_TYPES = ["CLIENT", "PROJECT"];
-var APPROVAL_ACTIONS = ["CREATE", "UPDATE", "STATUS", "ARCHIVE", "RESTORE"];
+var APPROVAL_ENTITY_TYPES = ["CLIENT", "PROJECT", "TASK", "AD", "STUDIO_JOB", "USER", "DOCUMENT", "INVOICE", "BANK_ACCOUNT", "EXPENSE"];
+var APPROVAL_ACTIONS = ["CREATE", "UPDATE", "STATUS", "ARCHIVE", "RESTORE", "DELETE", "PERMISSIONS"];
 function approvalJson(value) {
   try {
     return JSON.parse(value || "{}");
@@ -621,8 +648,21 @@ function approvalToApi(row) {
 __name(approvalToApi, "approvalToApi");
 async function approvalEntity(env, entityType, entityId) {
   if (!entityId) return null;
-  if (entityType === "CLIENT") return first(env, "SELECT * FROM clients WHERE client_id = ?", [entityId]);
-  return first(env, "SELECT * FROM projects WHERE project_id = ?", [entityId]);
+  const definitions = {
+    CLIENT: ["clients", "client_id"],
+    PROJECT: ["projects", "project_id"],
+    TASK: ["tasks", "task_id"],
+    AD: ["paid_ads", "ad_id"],
+    STUDIO_JOB: ["studio_jobs", "studio_job_id"],
+    USER: ["users", "user_id"],
+    DOCUMENT: ["documents", "document_id"],
+    INVOICE: ["invoices", "invoice_id"],
+    BANK_ACCOUNT: ["bank_accounts", "bank_account_id"],
+    EXPENSE: ["expenses", "expense_id"]
+  };
+  const definition = definitions[entityType];
+  if (!definition) return null;
+  return first(env, `SELECT * FROM ${definition[0]} WHERE ${definition[1]} = ?`, [entityId]);
 }
 __name(approvalEntity, "approvalEntity");
 async function listApprovalRequests({ env, actor, data }) {
@@ -634,7 +674,7 @@ async function listApprovalRequests({ env, actor, data }) {
 }
 __name(listApprovalRequests, "listApprovalRequests");
 async function createApprovalRequest({ env, actor, data }) {
-  if (actor.role !== "ASSISTANT_MANAGER") throw new ApiError("APPROVAL_REQUEST_NOT_REQUIRED", "طلبات الاعتماد مخصصة لتعديلات المدير المساعد.", {}, 403);
+  if (!["ADMIN", "MANAGER", "ASSISTANT_MANAGER"].includes(actor.role) && actor.userType !== "ADMIN") throw new ApiError("APPROVAL_REQUEST_NOT_ALLOWED", "Approval requests are available to management roles only.", {}, 403);
   required(data, ["entityType", "action", "description"]);
   const entityType = String(data.entityType).toUpperCase();
   const action = String(data.action).toUpperCase();
@@ -676,18 +716,79 @@ async function createApprovalRequest({ env, actor, data }) {
 __name(createApprovalRequest, "createApprovalRequest");
 async function executeApprovedChange(env, actor, request) {
   const payload = approvalJson(request.payload_json);
-  if (request.entity_type === "CLIENT") {
-    if (request.action === "CREATE") return createClient({ env, actor, data: payload });
+  const entityType = request.entity_type;
+  const action = request.action;
+  if (entityType === "CLIENT") {
+    if (action === "CREATE") return createClient({ env, actor, data: payload });
     payload.clientId = request.entity_id;
-    if (request.action === "ARCHIVE") payload.status = "ARCHIVED";
-    if (request.action === "RESTORE") payload.status = "ACTIVE";
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "ARCHIVED";
+    if (action === "RESTORE") payload.status = "ACTIVE";
     return updateClient({ env, actor, data: payload });
   }
-  if (request.action === "CREATE") return createProject({ env, actor, data: payload });
-  payload.projectId = request.entity_id;
-  if (request.action === "ARCHIVE") payload.status = "CANCELLED";
-  if (request.action === "RESTORE") payload.status = "PLANNED";
-  return updateProject({ env, actor, data: payload });
+  if (entityType === "PROJECT") {
+    if (action === "CREATE") return createProject({ env, actor, data: payload });
+    payload.projectId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "CANCELLED";
+    if (action === "RESTORE") payload.status = "PLANNED";
+    return updateProject({ env, actor, data: payload });
+  }
+  if (entityType === "TASK") {
+    payload.taskId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "BLOCKED";
+    if (action === "RESTORE") payload.status = "TODO";
+    return updateTask({ env, actor, data: payload });
+  }
+  if (entityType === "AD") {
+    payload.adId = request.entity_id;
+    if (action === "ARCHIVE" || action === "RESTORE") {
+      payload.archived = action === "ARCHIVE";
+      return financialCall(env, "POST ads.archive", actor, payload, `approval:${request.approval_id}`);
+    }
+    if (action === "DELETE") {
+      payload.cancellationReason ||= request.description || "Cancelled through approved request";
+      return financialCall(env, "POST ads.cancel", actor, payload, `approval:${request.approval_id}`);
+    }
+    return financialCall(env, "PUT ads", actor, payload, `approval:${request.approval_id}`);
+  }
+  if (entityType === "STUDIO_JOB") {
+    payload.studioJobId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "CANCELLED";
+    if (action === "RESTORE") payload.status = "TODO";
+    return updateStudioJob({ env, actor, data: payload });
+  }
+  if (entityType === "USER") {
+    if (action === "PERMISSIONS") return setUserPermissions({ env, actor, data: payload });
+    payload.userId = request.entity_id;
+    if (action === "DELETE") return deleteUser({ env, actor, data: payload });
+    if (action === "ARCHIVE") return setUserActive({ env, actor, data: { userId: request.entity_id, active: false } });
+    if (action === "RESTORE") return setUserActive({ env, actor, data: { userId: request.entity_id, active: true } });
+    return updateUser({ env, actor, data: payload });
+  }
+  if (entityType === "DOCUMENT") {
+    payload.documentId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) return archiveDocument({ env, actor, data: payload });
+    throw new ApiError("APPROVAL_ACTION_UNSUPPORTED", "Only document archiving is supported.");
+  }
+  if (entityType === "INVOICE") {
+    payload.invoiceId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "CANCELLED";
+    if (action === "RESTORE") payload.status = "DRAFT";
+    return financialCall(env, "PUT invoices", actor, payload, `approval:${request.approval_id}`);
+  }
+  if (entityType === "BANK_ACCOUNT") {
+    payload.bankAccountId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) payload.active = false;
+    if (action === "RESTORE") payload.active = true;
+    return financialCall(env, "PUT bank.accounts", actor, payload, `approval:${request.approval_id}`);
+  }
+  if (entityType === "EXPENSE") {
+    payload.expenseId = request.entity_id;
+    if (["ARCHIVE", "DELETE"].includes(action)) {
+      return financialCall(env, "POST expenses.archive", actor, payload, `approval:${request.approval_id}`);
+    }
+    return financialCall(env, "PUT expenses", actor, payload, `approval:${request.approval_id}`);
+  }
+  throw new ApiError("APPROVAL_ENTITY_UNSUPPORTED", "Unsupported approval entity type.");
 }
 __name(executeApprovedChange, "executeApprovedChange");
 async function reviewApprovalRequest({ env, actor, data }) {
@@ -726,7 +827,7 @@ __name(reviewApprovalRequest, "reviewApprovalRequest");
 // src/routes/tasks.js
 var STATUSES2 = ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE", "BLOCKED"];
 var PRIORITIES2 = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-var unrestricted = /* @__PURE__ */ __name((actor) => actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ACCOUNT_MANAGER"].includes(actor.role), "unrestricted");
+var unrestricted = /* @__PURE__ */ __name((actor) => actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ASSISTANT_MANAGER", "ACCOUNT_MANAGER"].includes(actor.role), "unrestricted");
 async function selectedEmployee(env, value) {
   const employeeId = text(value);
   if (!employeeId) return null;
@@ -752,7 +853,7 @@ __name(accessibleTask, "accessibleTask");
 async function listTasks({ env, actor, data }) {
   let rows = unrestricted(actor) ? await all(env, "SELECT * FROM tasks ORDER BY created_at DESC") : await all(env, "SELECT * FROM tasks WHERE employee_id = ? OR assigned_email = ? COLLATE NOCASE ORDER BY created_at DESC", [actor.employeeId, actor.email]);
   if (data.status) rows = rows.filter((row) => row.status === data.status);
-  const employees = await all(env, "SELECT employee_id,full_name,email,role FROM employees WHERE active = 1 ORDER BY full_name");
+  const employees = unrestricted(actor) ? await all(env, "SELECT employee_id,full_name,email,role FROM employees WHERE active = 1 ORDER BY full_name") : [];
   return { tasks: toApiList(rows), employees: toApiList(employees) };
 }
 __name(listTasks, "listTasks");
@@ -787,6 +888,7 @@ __name(createTask, "createTask");
 async function updateTask({ env, actor, data }) {
   required(data, ["taskId"]);
   const existing = await accessibleTask(env, data.taskId, actor);
+  if (!unrestricted(actor)) data = { taskId: data.taskId, status: data.status };
   const status = data.status ? String(data.status).toUpperCase() : existing.status;
   const priority = data.priority ? String(data.priority).toUpperCase() : existing.priority;
   if (!STATUSES2.includes(status) || !PRIORITIES2.includes(priority)) throw new ApiError("INVALID_TASK_DATA", "\u062D\u0627\u0644\u0629 \u0623\u0648 \u0623\u0648\u0644\u0648\u064A\u0629 \u0627\u0644\u0645\u0647\u0645\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629.");
@@ -847,7 +949,7 @@ __name(addWorkUpdate, "addWorkUpdate");
 
 // src/routes/studio.js
 var JOB_TYPES = ["PHOTOGRAPHY", "VIDEOGRAPHY", "EDITING", "DESIGN", "DELIVERY"];
-var unrestricted2 = /* @__PURE__ */ __name((actor) => actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ACCOUNT_MANAGER"].includes(actor.role), "unrestricted");
+var unrestricted2 = /* @__PURE__ */ __name((actor) => actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ASSISTANT_MANAGER", "ACCOUNT_MANAGER"].includes(actor.role), "unrestricted");
 async function selectedEmployee2(env, value) {
   const employeeId = text(value);
   if (!employeeId) return null;
@@ -874,14 +976,19 @@ async function selectedProject2(env, value) {
 __name(selectedProject2, "selectedProject");
 async function accessibleJob(env, jobId, actor) {
   const job = await first(env, "SELECT * FROM studio_jobs WHERE studio_job_id = ?", [jobId]);
-  if (!job || !unrestricted2(actor) && job.employee_id !== actor.employeeId) throw new ApiError("JOB_NOT_FOUND", "\u0639\u0645\u0644 \u0627\u0644\u0627\u0633\u062A\u0648\u062F\u064A\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0623\u0648 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0644\u0643.", {}, 404);
+  if (!job) throw new ApiError("JOB_NOT_FOUND", "Studio job not found.", {}, 404);
+  if (!unrestricted2(actor) && job.employee_id !== actor.employeeId) {
+    const assignment = actor.employeeId ? await first(env, "SELECT 1 AS allowed FROM studio_job_assignments WHERE studio_job_id=? AND employee_id=?", [jobId, actor.employeeId]) : null;
+    if (!assignment) throw new ApiError("JOB_NOT_FOUND", "Studio job is not available to you.", {}, 404);
+  }
   return job;
 }
 __name(accessibleJob, "accessibleJob");
 async function listStudioJobs({ env, actor }) {
-  const rows = unrestricted2(actor) ? await all(env, "SELECT * FROM studio_jobs ORDER BY created_at DESC") : await all(env, "SELECT * FROM studio_jobs WHERE employee_id = ? ORDER BY created_at DESC", [actor.employeeId]);
-  const employees = await all(env, "SELECT employee_id,full_name,email,role FROM employees WHERE active = 1 ORDER BY full_name");
-  return { jobs: toApiList(rows), employees: toApiList(employees) };
+  const rows = unrestricted2(actor) ? await all(env, "SELECT * FROM studio_jobs ORDER BY created_at DESC") : await all(env, "SELECT DISTINCT j.* FROM studio_jobs j LEFT JOIN studio_job_assignments a ON a.studio_job_id=j.studio_job_id WHERE j.employee_id=? OR a.employee_id=? ORDER BY j.created_at DESC", [actor.employeeId, actor.employeeId]);
+  const visibleRows = unrestricted2(actor) ? rows : rows.map((row) => without(row, ["sale_price", "direct_cost"]));
+  const employees = unrestricted2(actor) ? await all(env, "SELECT employee_id,full_name,email,role FROM employees WHERE active = 1 ORDER BY full_name") : [];
+  return { jobs: toApiList(visibleRows), employees: toApiList(employees) };
 }
 __name(listStudioJobs, "listStudioJobs");
 async function createStudioJob({ env, actor, data }) {
@@ -906,17 +1013,34 @@ async function createStudioJob({ env, actor, data }) {
     due_date: data.dueDate || null,
     delivery_url: text(data.deliveryUrl),
     brief: text(data.brief),
+    sale_price: round(data.salePrice),
+    direct_cost: round(data.directCost),
+    billable: data.billable === void 0 ? 1 : Number(bool(data.billable)),
     created_at: timestamp,
     updated_at: timestamp
   };
   await insert(env, "studio_jobs", record);
+  const assignmentSummary = Array.isArray(data.assignments) ? await replaceStudioAssignments(env, record.studio_job_id, data.assignments) : { assignments: [], laborCost: 0 };
+  if (!record.direct_cost && assignmentSummary.laborCost) {
+    record.direct_cost = assignmentSummary.laborCost;
+    await run(env, "UPDATE studio_jobs SET direct_cost=?, updated_at=? WHERE studio_job_id=?", [record.direct_cost, now(), record.studio_job_id]);
+  }
+  const statementEntry = await syncStudioStatement(env, actor, record.studio_job_id, record.sale_price);
   await audit(env, actor, "STUDIO_JOB_CREATED", "STUDIO_JOB", record.studio_job_id, record);
-  return { job: toApi(record) };
+  return { job: toApi(record), assignments: assignmentSummary.assignments, statementEntry: toApi(statementEntry) };
 }
 __name(createStudioJob, "createStudioJob");
 async function updateStudioJob({ env, actor, data }) {
   required(data, ["studioJobId"]);
   const existing = await accessibleJob(env, data.studioJobId, actor);
+  if (!managementActor(actor)) {
+    data = {
+      studioJobId: data.studioJobId,
+      status: data.status,
+      deliveryUrl: data.deliveryUrl,
+      brief: data.brief
+    };
+  }
   const type = data.jobType ? String(data.jobType).toUpperCase() : existing.job_type;
   if (!JOB_TYPES.includes(type)) throw new ApiError("INVALID_JOB_TYPE", "\u0646\u0648\u0639 \u0639\u0645\u0644 \u0627\u0644\u0627\u0633\u062A\u0648\u062F\u064A\u0648 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.", { allowed: JOB_TYPES });
   const clientChanged = data.clientId !== void 0;
@@ -938,10 +1062,19 @@ async function updateStudioJob({ env, actor, data }) {
     due_date: data.dueDate ?? existing.due_date,
     delivery_url: data.deliveryUrl ?? existing.delivery_url,
     brief: data.brief ?? existing.brief,
+    sale_price: data.salePrice === void 0 ? existing.sale_price : round(data.salePrice),
+    direct_cost: data.directCost === void 0 ? existing.direct_cost : round(data.directCost),
+    billable: data.billable === void 0 ? existing.billable : Number(bool(data.billable)),
     updated_at: now()
   }, "studio_job_id", data.studioJobId);
+  const assignmentSummary = Array.isArray(data.assignments) ? await replaceStudioAssignments(env, data.studioJobId, data.assignments) : null;
+  if (assignmentSummary && data.directCost === void 0) {
+    saved.direct_cost = assignmentSummary.laborCost;
+    await run(env, "UPDATE studio_jobs SET direct_cost=?, updated_at=? WHERE studio_job_id=?", [saved.direct_cost, now(), data.studioJobId]);
+  }
+  const statementEntry = await syncStudioStatement(env, actor, data.studioJobId, saved.sale_price);
   await audit(env, actor, "STUDIO_JOB_UPDATED", "STUDIO_JOB", data.studioJobId, data);
-  return { job: toApi(saved) };
+  return { job: toApi(saved), assignments: assignmentSummary?.assignments || null, statementEntry: toApi(statementEntry) };
 }
 __name(updateStudioJob, "updateStudioJob");
 async function addStudioAsset({ env, actor, data }) {
@@ -1303,8 +1436,11 @@ async function projectInvoicePreview({ env, actor, data }) {
     total: round(subtotal * (1 + taxRate / 100))
   };
 }
-__name(projectInvoicePreview, "projectInvoicePreview");async function listExpenses({ env }) {
-  return { expenses: toApiList(await all(env, "SELECT * FROM expenses ORDER BY expense_date DESC")) };
+__name(projectInvoicePreview, "projectInvoicePreview");async function listExpenses({ env, data }) {
+  const includeArchived = bool(data.includeArchived);
+  const where = includeArchived ? "" : "WHERE e.status = 'ACTIVE'";
+  const rows = await all(env, `SELECT e.*, c.client_name, p.project_name FROM expenses e LEFT JOIN clients c ON c.client_id=e.client_id LEFT JOIN projects p ON p.project_id=e.project_id ${where} ORDER BY e.expense_date DESC`);
+  return { expenses: toApiList(rows) };
 }
 __name(listExpenses, "listExpenses");
 async function getClientStatement({ env, data }) {
@@ -1485,7 +1621,20 @@ async function saveSystemSettings({ env, actor, data }) {
     const rate = Number(data["Invoice Tax Rate"]);
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new ApiError("INVALID_TAX_RATE", "نسبة الضريبة يجب أن تكون بين 0 و100.");
   }
-  const timestamp = now();
+  if (data["Default Interface Language"] !== void 0 && !["ar", "en"].includes(String(data["Default Interface Language"]))) {
+    throw new ApiError("INVALID_LANGUAGE", "لغة الواجهة يجب أن تكون ar أو en.");
+  }
+  for (const key of ["Primary Brand Color", "Secondary Brand Color"]) {
+    if (data[key] !== void 0 && !/^#[0-9a-f]{6}$/i.test(String(data[key]))) {
+      throw new ApiError("INVALID_BRAND_COLOR", "لون الهوية يجب أن يكون بصيغة HEX مثل #A8F025.", { key });
+    }
+  }
+  if (data["Company Logo URL"] && !/^https:\/\//i.test(String(data["Company Logo URL"]))) {
+    throw new ApiError("INVALID_LOGO_URL", "رابط الشعار يجب أن يبدأ بـ https://.");
+  }
+  if (data["Custom Domain"] && !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(String(data["Custom Domain"]).trim())) {
+    throw new ApiError("INVALID_CUSTOM_DOMAIN", "اكتب اسم الدومين فقط بدون https://، مثال erp.example.com.");
+  }  const timestamp = now();
   await batch(env, updates.map(([key, value]) => statement(env, "INSERT INTO settings (setting_key,setting_value,description,updated_at) VALUES (?,?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at", [
     key, String(value ?? ""), key, timestamp
   ])));
@@ -1510,6 +1659,7 @@ async function validateDocumentLinks(env, clientId, projectId) {
 __name(validateDocumentLinks, "validateDocumentLinks");
 
 async function listDocuments({ env, actor, data }) {
+  if (!managementActor(actor)) throw new ApiError("FORBIDDEN", "Documents are restricted to the primary and assistant managers.", {}, 403);
   const clauses = [];
   const bindings = [];
   if (!bool(data.includeArchived)) clauses.push("d.status = 'ACTIVE'");
@@ -1537,6 +1687,7 @@ async function listDocuments({ env, actor, data }) {
 __name(listDocuments, "listDocuments");
 
 async function createDocument({ env, actor, data }) {
+  if (!managementActor(actor)) throw new ApiError("FORBIDDEN", "Documents are restricted to the primary and assistant managers.", {}, 403);
   required(data, ["title", "category", "fileName", "contentType", "base64"]);
   const links = await validateDocumentLinks(env, text(data.clientId) || null, text(data.projectId) || null);
   const visibility = String(data.visibility || "INTERNAL").toUpperCase();
@@ -1572,6 +1723,7 @@ async function createDocument({ env, actor, data }) {
 __name(createDocument, "createDocument");
 
 async function archiveDocument({ env, actor, data }) {
+  if (!managementActor(actor)) throw new ApiError("FORBIDDEN", "Documents are restricted to the primary and assistant managers.", {}, 403);
   required(data, ["documentId"]);
   const existing = await first(env, "SELECT * FROM documents WHERE document_id = ?", [data.documentId]);
   if (!existing) throw new ApiError("DOCUMENT_NOT_FOUND", "المستند غير موجود.", {}, 404);
@@ -1581,6 +1733,341 @@ async function archiveDocument({ env, actor, data }) {
   return { archived: true, document: toApi(saved) };
 }
 __name(archiveDocument, "archiveDocument");
+// src/routes/governance.js
+function primaryManager(actor) {
+  return actor?.userType === "ADMIN" || ["ADMIN", "MANAGER"].includes(actor?.role);
+}
+__name(primaryManager, "primaryManager");
+function managementActor(actor) {
+  return primaryManager(actor) || actor?.role === "ASSISTANT_MANAGER";
+}
+__name(managementActor, "managementActor");
+function requirePrimaryManager(actor) {
+  if (!primaryManager(actor)) throw new ApiError("FORBIDDEN", "This operation is available to the primary manager only.", {}, 403);
+}
+__name(requirePrimaryManager, "requirePrimaryManager");
+
+async function noteEntityAccess(env, actor, entityType, entityId) {
+  if (managementActor(actor)) return true;
+  if (actor.userType === "CLIENT") {
+    if (entityType === "CLIENT") return actor.clientId === entityId;
+    const definitions = {
+      PROJECT: ["projects", "project_id"],
+      AD: ["paid_ads", "ad_id"],
+      STUDIO_JOB: ["studio_jobs", "studio_job_id"],
+      INVOICE: ["invoices", "invoice_id"],
+      SERVICE_REQUEST: ["service_requests", "request_id"]
+    };
+    const definition = definitions[entityType];
+    if (!definition) return false;
+    const row = await first(env, `SELECT client_id FROM ${definition[0]} WHERE ${definition[1]}=?`, [entityId]);
+    return row?.client_id === actor.clientId;
+  }
+  if (actor.employeeId && entityType === "TASK") {
+    const row = await first(env, "SELECT employee_id,assigned_email FROM tasks WHERE task_id=?", [entityId]);
+    return row?.employee_id === actor.employeeId || email(row?.assigned_email) === actor.email;
+  }
+  if (actor.employeeId && entityType === "STUDIO_JOB") {
+    const row = await first(env, "SELECT employee_id FROM studio_jobs WHERE studio_job_id=?", [entityId]);
+    if (row?.employee_id === actor.employeeId) return true;
+    return Boolean(await first(env, "SELECT 1 AS allowed FROM studio_job_assignments WHERE studio_job_id=? AND employee_id=?", [entityId, actor.employeeId]));
+  }
+  return false;
+}
+__name(noteEntityAccess, "noteEntityAccess");
+
+async function listNoteLabels({ env, actor, data }) {
+  const includeInactive = primaryManager(actor) && bool(data.includeInactive);
+  const rows = await all(env, `SELECT * FROM note_labels ${includeInactive ? "" : "WHERE active=1"} ORDER BY name_ar`);
+  return { labels: toApiList(rows) };
+}
+__name(listNoteLabels, "listNoteLabels");
+async function saveNoteLabel({ env, actor, data }) {
+  requirePrimaryManager(actor);
+  required(data, ["nameAr", "nameEn", "color"]);
+  const color = String(data.color).trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new ApiError("INVALID_COLOR", "Label color must be a six-digit hex color.");
+  const timestamp = now();
+  const existing = data.labelId ? await first(env, "SELECT * FROM note_labels WHERE label_id=?", [data.labelId]) : null;
+  const record = {
+    label_id: existing?.label_id || id("LBL"),
+    name_ar: text(data.nameAr).slice(0, 80),
+    name_en: text(data.nameEn).slice(0, 80),
+    color,
+    active: data.active === void 0 ? existing?.active ?? 1 : Number(bool(data.active)),
+    created_by: existing?.created_by || actor.email,
+    created_at: existing?.created_at || timestamp,
+    updated_at: timestamp
+  };
+  if (existing) await update(env, "note_labels", record, "label_id", record.label_id);
+  else await insert(env, "note_labels", record);
+  await audit(env, actor, existing ? "NOTE_LABEL_UPDATED" : "NOTE_LABEL_CREATED", "NOTE_LABEL", record.label_id, record);
+  return { label: toApi(record) };
+}
+__name(saveNoteLabel, "saveNoteLabel");
+
+async function listNotes({ env, actor, data }) {
+  required(data, ["entityType", "entityId"]);
+  const entityType = String(data.entityType).toUpperCase();
+  const entityId = text(data.entityId);
+  if (!await noteEntityAccess(env, actor, entityType, entityId)) throw new ApiError("FORBIDDEN", "You cannot access notes for this record.", {}, 403);
+  const rows = await all(env, `SELECT n.*, COALESCE(json_group_array(CASE WHEN l.label_id IS NULL THEN NULL ELSE json_object('labelId',l.label_id,'nameAr',l.name_ar,'nameEn',l.name_en,'color',l.color) END),'[]') AS labels_json FROM entity_notes n LEFT JOIN note_label_links nl ON nl.note_id=n.note_id LEFT JOIN note_labels l ON l.label_id=nl.label_id WHERE n.entity_type=? AND n.entity_id=? AND n.archived=0 GROUP BY n.note_id ORDER BY n.created_at DESC`, [entityType, entityId]);
+  return { notes: rows.map((row) => {
+    const labels = approvalJson(row.labels_json);
+    return { ...toApi(without(row, ["labels_json"])), labels: Array.isArray(labels) ? labels.filter(Boolean) : [] };
+  }) };
+}
+__name(listNotes, "listNotes");
+async function createNote({ env, actor, data }) {
+  required(data, ["entityType", "entityId", "body"]);
+  const entityType = String(data.entityType).toUpperCase();
+  const entityId = text(data.entityId);
+  if (!await noteEntityAccess(env, actor, entityType, entityId)) throw new ApiError("FORBIDDEN", "You cannot add notes to this record.", {}, 403);
+  const labelIds = Array.isArray(data.labelIds) ? [...new Set(data.labelIds.map(text).filter(Boolean))].slice(0, 10) : [];
+  if (labelIds.length) {
+    const marks = labelIds.map(() => "?").join(",");
+    const found = await all(env, `SELECT label_id FROM note_labels WHERE active=1 AND label_id IN (${marks})`, labelIds);
+    if (found.length !== labelIds.length) throw new ApiError("INVALID_NOTE_LABEL", "One or more note labels are invalid.");
+  }
+  const timestamp = now();
+  const record = { note_id: id("NTE"), entity_type: entityType, entity_id: entityId, body: text(data.body).slice(0, 5000), created_by_user_id: actor.userId, created_by_name: actor.name || actor.email, created_by_email: actor.email, created_at: timestamp, updated_at: timestamp, archived: 0 };
+  const statements = [prepared(env, insertSql("entity_notes", record)), ...labelIds.map((labelId) => statement(env, "INSERT INTO note_label_links (note_id,label_id) VALUES (?,?)", [record.note_id, labelId]))];
+  await batch(env, statements);
+  await audit(env, actor, "NOTE_CREATED", entityType, entityId, { noteId: record.note_id, labelIds });
+  return { note: { ...toApi(record), labels: labelIds } };
+}
+__name(createNote, "createNote");
+// src/routes/notifications-and-requests.js
+async function listPopupNotifications({ env, actor, data }) {
+  const timestamp = now();
+  const sessionId = text(data.sessionId).slice(0, 120);
+  const audience = actor.userType === "CLIENT" ? "CLIENTS" : "EMPLOYEES";
+  const rows = await all(env, `SELECT n.*, r.seen_at, r.acknowledged_at FROM popup_notifications n LEFT JOIN popup_notification_receipts r ON r.notification_id=n.notification_id AND r.user_id=? AND r.session_id=CASE WHEN n.frequency='EVERY_SESSION' THEN ? ELSE '' END WHERE n.active=1 AND n.audience IN ('ALL',?) AND (n.starts_at IS NULL OR n.starts_at<=?) AND (n.ends_at IS NULL OR n.ends_at>=?) ORDER BY n.created_at DESC`, [actor.userId, sessionId, audience, timestamp, timestamp]);
+  const visible = rows.filter((row) => row.requires_ack ? !row.acknowledged_at : !row.seen_at);
+  return { notifications: toApiList(visible) };
+}
+__name(listPopupNotifications, "listPopupNotifications");
+async function listManagedNotifications({ env, actor }) {
+  requirePrimaryManager(actor);
+  return { notifications: toApiList(await all(env, "SELECT * FROM popup_notifications ORDER BY created_at DESC LIMIT 300")) };
+}
+__name(listManagedNotifications, "listManagedNotifications");
+async function createPopupNotification({ env, actor, data }) {
+  requirePrimaryManager(actor);
+  required(data, ["titleAr", "titleEn", "messageAr", "messageEn", "audience", "frequency"]);
+  const audience = String(data.audience).toUpperCase();
+  const frequency = String(data.frequency).toUpperCase();
+  if (!["EMPLOYEES", "CLIENTS", "ALL"].includes(audience)) throw new ApiError("INVALID_AUDIENCE", "Invalid notification audience.");
+  if (!["ONCE", "EVERY_SESSION"].includes(frequency)) throw new ApiError("INVALID_FREQUENCY", "Invalid notification frequency.");
+  const timestamp = now();
+  const record = { notification_id: id("NTF"), title_ar: text(data.titleAr).slice(0, 160), title_en: text(data.titleEn).slice(0, 160), message_ar: text(data.messageAr).slice(0, 3000), message_en: text(data.messageEn).slice(0, 3000), audience, frequency, requires_ack: Number(bool(data.requiresAck)), active: 1, starts_at: data.startsAt || null, ends_at: data.endsAt || null, created_by: actor.email, created_at: timestamp, updated_at: timestamp };
+  await insert(env, "popup_notifications", record);
+  await audit(env, actor, "POPUP_NOTIFICATION_CREATED", "NOTIFICATION", record.notification_id, { audience, frequency, requiresAck: Boolean(record.requires_ack) });
+  return { notification: toApi(record) };
+}
+__name(createPopupNotification, "createPopupNotification");
+async function updatePopupNotification({ env, actor, data }) {
+  requirePrimaryManager(actor);
+  required(data, ["notificationId"]);
+  const existing = await first(env, "SELECT * FROM popup_notifications WHERE notification_id=?", [data.notificationId]);
+  if (!existing) throw new ApiError("NOTIFICATION_NOT_FOUND", "Notification not found.", {}, 404);
+  const saved = await update(env, "popup_notifications", { title_ar: data.titleAr ?? existing.title_ar, title_en: data.titleEn ?? existing.title_en, message_ar: data.messageAr ?? existing.message_ar, message_en: data.messageEn ?? existing.message_en, audience: data.audience ? String(data.audience).toUpperCase() : existing.audience, frequency: data.frequency ? String(data.frequency).toUpperCase() : existing.frequency, requires_ack: data.requiresAck === void 0 ? existing.requires_ack : Number(bool(data.requiresAck)), active: data.active === void 0 ? existing.active : Number(bool(data.active)), starts_at: data.startsAt === void 0 ? existing.starts_at : data.startsAt || null, ends_at: data.endsAt === void 0 ? existing.ends_at : data.endsAt || null, updated_at: now() }, "notification_id", existing.notification_id);
+  await audit(env, actor, "POPUP_NOTIFICATION_UPDATED", "NOTIFICATION", existing.notification_id, data);
+  return { notification: toApi(saved) };
+}
+__name(updatePopupNotification, "updatePopupNotification");
+async function acknowledgePopupNotification({ env, actor, data }) {
+  required(data, ["notificationId"]);
+  const notification = await first(env, "SELECT * FROM popup_notifications WHERE notification_id=? AND active=1", [data.notificationId]);
+  if (!notification) throw new ApiError("NOTIFICATION_NOT_FOUND", "Notification not found.", {}, 404);
+  const sessionId = notification.frequency === "EVERY_SESSION" ? text(data.sessionId).slice(0, 120) : "";
+  const timestamp = now();
+  const acknowledgedAt = bool(data.acknowledged) ? timestamp : null;
+  await run(env, "INSERT INTO popup_notification_receipts (notification_id,user_id,session_id,seen_at,acknowledged_at) VALUES (?,?,?,?,?) ON CONFLICT(notification_id,user_id,session_id) DO UPDATE SET seen_at=excluded.seen_at,acknowledged_at=COALESCE(excluded.acknowledged_at,popup_notification_receipts.acknowledged_at)", [notification.notification_id, actor.userId, sessionId, timestamp, acknowledgedAt]);
+  return { recorded: true, notificationId: notification.notification_id, acknowledgedAt };
+}
+__name(acknowledgePopupNotification, "acknowledgePopupNotification");
+
+function requestIsManagement(actor) {
+  return managementActor(actor);
+}
+__name(requestIsManagement, "requestIsManagement");
+async function listServiceRequests({ env, actor, data }) {
+  const clauses = [];
+  const bindings = [];
+  if (actor.userType === "CLIENT") { clauses.push("r.client_id=?"); bindings.push(actor.clientId); }
+  else if (!requestIsManagement(actor)) throw new ApiError("FORBIDDEN", "Service requests are available to clients and management only.", {}, 403);
+  if (data.status) { clauses.push("r.status=?"); bindings.push(String(data.status).toUpperCase()); }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+  const rows = await all(env, `SELECT r.*, c.client_name, p.project_name, (SELECT COUNT(*) FROM service_request_messages m WHERE m.request_id=r.request_id) AS message_count FROM service_requests r JOIN clients c ON c.client_id=r.client_id LEFT JOIN projects p ON p.project_id=r.project_id ${where} ORDER BY r.updated_at DESC`, bindings);
+  return { requests: toApiList(rows) };
+}
+__name(listServiceRequests, "listServiceRequests");
+async function getServiceRequest({ env, actor, data }) {
+  required(data, ["requestId"]);
+  const request = await first(env, "SELECT r.*, c.client_name, p.project_name FROM service_requests r JOIN clients c ON c.client_id=r.client_id LEFT JOIN projects p ON p.project_id=r.project_id WHERE r.request_id=?", [data.requestId]);
+  if (!request || actor.userType === "CLIENT" && request.client_id !== actor.clientId || !requestIsManagement(actor) && actor.userType !== "CLIENT") throw new ApiError("REQUEST_NOT_FOUND", "Service request not found.", {}, 404);
+  const messages = await all(env, "SELECT * FROM service_request_messages WHERE request_id=? ORDER BY created_at", [request.request_id]);
+  return { request: toApi(request), messages: toApiList(messages) };
+}
+__name(getServiceRequest, "getServiceRequest");
+async function createServiceRequest({ env, actor, data }) {
+  required(data, ["title", "serviceType", "description"]);
+  const clientId = actor.userType === "CLIENT" ? actor.clientId : text(data.clientId);
+  if (!clientId || !await first(env, "SELECT client_id FROM clients WHERE client_id=?", [clientId])) throw new ApiError("CLIENT_NOT_FOUND", "Client not found.", {}, 404);
+  if (data.projectId && !await first(env, "SELECT project_id FROM projects WHERE project_id=? AND client_id=?", [data.projectId, clientId])) throw new ApiError("PROJECT_NOT_FOUND", "Project not found for this client.", {}, 404);
+  const timestamp = now();
+  const record = { request_id: id("REQ"), client_id: clientId, project_id: data.projectId || null, title: text(data.title).slice(0, 200), service_type: text(data.serviceType).slice(0, 100), description: text(data.description).slice(0, 5000), status: "NEW", created_by_user_id: actor.userId, created_by_email: actor.email, client_unread: 0, admin_unread: actor.userType === "CLIENT" ? 1 : 0, created_at: timestamp, updated_at: timestamp };
+  await insert(env, "service_requests", record);
+  await audit(env, actor, "SERVICE_REQUEST_CREATED", "SERVICE_REQUEST", record.request_id, { clientId, projectId: record.project_id, serviceType: record.service_type });
+  return { request: toApi(record) };
+}
+__name(createServiceRequest, "createServiceRequest");
+async function replyServiceRequest({ env, actor, data }) {
+  required(data, ["requestId", "body"]);
+  const request = await first(env, "SELECT * FROM service_requests WHERE request_id=?", [data.requestId]);
+  if (!request || actor.userType === "CLIENT" && request.client_id !== actor.clientId || !requestIsManagement(actor) && actor.userType !== "CLIENT") throw new ApiError("REQUEST_NOT_FOUND", "Service request not found.", {}, 404);
+  const messageType = String(data.messageType || "MESSAGE").toUpperCase();
+  if (!["MESSAGE", "QUOTATION", "STATUS"].includes(messageType)) throw new ApiError("INVALID_MESSAGE_TYPE", "Invalid request message type.");
+  if (messageType === "QUOTATION" && !requestIsManagement(actor)) throw new ApiError("FORBIDDEN", "Only management can send quotations.", {}, 403);
+  if (messageType === "QUOTATION" && number(data.quotationAmount) <= 0) throw new ApiError("INVALID_QUOTATION", "Quotation amount must be greater than zero.");
+  const timestamp = now();
+  const message = { message_id: id("MSG"), request_id: request.request_id, sender_user_id: actor.userId, sender_type: actor.userType, sender_name: actor.name || actor.email, body: text(data.body).slice(0, 5000), message_type: messageType, quotation_amount: messageType === "QUOTATION" ? round(data.quotationAmount) : null, quotation_currency: messageType === "QUOTATION" ? data.quotationCurrency || "EGP" : null, quotation_valid_until: messageType === "QUOTATION" ? data.quotationValidUntil || null : null, created_at: timestamp };
+  const status = data.status ? String(data.status).toUpperCase() : messageType === "QUOTATION" ? "QUOTED" : request.status === "NEW" && requestIsManagement(actor) ? "IN_REVIEW" : request.status;
+  if (!["NEW", "IN_REVIEW", "QUOTED", "ACCEPTED", "REJECTED", "CLOSED"].includes(status)) throw new ApiError("INVALID_REQUEST_STATUS", "Invalid request status.");
+  await batch(env, [prepared(env, insertSql("service_request_messages", message)), statement(env, "UPDATE service_requests SET status=?, client_unread=?, admin_unread=?, updated_at=? WHERE request_id=?", [status, requestIsManagement(actor) ? 1 : 0, actor.userType === "CLIENT" ? 1 : 0, timestamp, request.request_id])]);
+  await audit(env, actor, "SERVICE_REQUEST_REPLIED", "SERVICE_REQUEST", request.request_id, { messageType, status, messageId: message.message_id });
+  return { message: toApi(message), status };
+}
+__name(replyServiceRequest, "replyServiceRequest");
+async function markServiceRequestRead({ env, actor, data }) {
+  required(data, ["requestId"]);
+  const request = await first(env, "SELECT * FROM service_requests WHERE request_id=?", [data.requestId]);
+  if (!request || actor.userType === "CLIENT" && request.client_id !== actor.clientId || !requestIsManagement(actor) && actor.userType !== "CLIENT") throw new ApiError("REQUEST_NOT_FOUND", "Service request not found.", {}, 404);
+  const field = actor.userType === "CLIENT" ? "client_unread" : "admin_unread";
+  await run(env, `UPDATE service_requests SET ${field}=0 WHERE request_id=?`, [request.request_id]);
+  return { read: true, requestId: request.request_id };
+}
+__name(markServiceRequestRead, "markServiceRequestRead");
+// src/routes/system-governance.js
+async function listPagePolicies({ env }) {
+  return { policies: toApiList(await all(env, "SELECT * FROM page_policies ORDER BY page_key, portal")) };
+}
+__name(listPagePolicies, "listPagePolicies");
+async function savePagePolicy({ env, actor, data }) {
+  requirePrimaryManager(actor);
+  required(data, ["pageKey", "portal", "visibility", "accessLevel"]);
+  const portal = String(data.portal).toUpperCase();
+  const visibility = String(data.visibility).toUpperCase();
+  const accessLevel = String(data.accessLevel).toUpperCase();
+  if (!["ADMIN", "EMPLOYEE", "CLIENT"].includes(portal)) throw new ApiError("INVALID_PORTAL", "Invalid portal.");
+  if (!["VISIBLE", "HIDDEN"].includes(visibility) || !["READ_ONLY", "FULL_ACCESS"].includes(accessLevel)) throw new ApiError("INVALID_PAGE_POLICY", "Invalid page policy.");
+  if (String(data.pageKey) === "documents" && !["ADMIN"].includes(portal) && visibility !== "HIDDEN") throw new ApiError("DOCUMENTS_RESTRICTED", "Documents are restricted to management.");
+  const timestamp = now();
+  const existing = await first(env, "SELECT * FROM page_policies WHERE page_key=? AND portal=?", [text(data.pageKey), portal]);
+  const record = { policy_id: existing?.policy_id || id("POL"), page_key: text(data.pageKey).slice(0, 80), portal, visibility, access_level: accessLevel, updated_by: actor.email, updated_at: timestamp };
+  if (existing) await update(env, "page_policies", record, "policy_id", existing.policy_id);
+  else await insert(env, "page_policies", record);
+  await audit(env, actor, "PAGE_POLICY_UPDATED", "PAGE_POLICY", record.policy_id, record);
+  return { policy: toApi(record) };
+}
+__name(savePagePolicy, "savePagePolicy");
+async function systemHealthMonitor({ env, actor }) {
+  requirePrimaryManager(actor);
+  const sinceHour = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const sinceDay = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [hour, day, errors, pending, database] = await Promise.all([
+    first(env, "SELECT COUNT(*) AS requests, COALESCE(AVG(duration_ms),0) AS latency, COALESCE(MAX(duration_ms),0) AS max_latency FROM request_metrics WHERE created_at>=?", [sinceHour]),
+    first(env, "SELECT COUNT(*) AS requests, COALESCE(AVG(duration_ms),0) AS latency FROM request_metrics WHERE created_at>=?", [sinceDay]),
+    first(env, "SELECT COUNT(*) AS count FROM request_metrics WHERE created_at>=? AND status_code>=500", [sinceDay]),
+    first(env, "SELECT COUNT(*) AS count FROM approval_requests WHERE status='PENDING'"),
+    first(env, "SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()")
+  ]);
+  const warnings = [];
+  if (number(errors?.count) > 0) warnings.push({ code: "SERVER_ERRORS", severity: "HIGH", count: number(errors.count) });
+  if (number(hour?.latency) > 750) warnings.push({ code: "HIGH_LATENCY", severity: "MEDIUM", value: round(hour.latency) });
+  if (number(pending?.count) > 20) warnings.push({ code: "APPROVAL_BACKLOG", severity: "MEDIUM", count: number(pending.count) });
+  return { status: warnings.some((item) => item.severity === "HIGH") ? "DEGRADED" : "UP", workers: { requestsLastHour: number(hour?.requests), requestsLast24Hours: number(day?.requests), averageLatencyMs: round(hour?.latency), maxLatencyMs: round(hour?.max_latency), errorsLast24Hours: number(errors?.count) }, d1: { estimatedBytes: number(database?.bytes) }, approvals: { pending: number(pending?.count) }, warnings, checkedAt: now() };
+}
+__name(systemHealthMonitor, "systemHealthMonitor");
+async function recordRequestMetric(env, routeName, method, statusCode, durationMs) {
+  if (!env.DB) return;
+  try {
+    await insert(env, "request_metrics", { metric_id: id("MET"), route: text(routeName || "unknown").slice(0, 100), method: text(method || "GET").slice(0, 10), status_code: Number(statusCode || 500), duration_ms: round(durationMs), created_at: now() });
+    if (Math.random() < 0.02) await run(env, "DELETE FROM request_metrics WHERE created_at < ?", [new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()]);
+  } catch (_) {}
+}
+__name(recordRequestMetric, "recordRequestMetric");
+
+async function replaceStudioAssignments(env, studioJobId, assignments) {
+  const normalized = Array.isArray(assignments) ? assignments.slice(0, 30).map((entry) => ({ employeeId: text(entry.employeeId), assignedHours: Math.max(0, number(entry.assignedHours)), hourlyCost: Math.max(0, number(entry.hourlyCost)), actualHours: Math.max(0, number(entry.actualHours)) })).filter((entry) => entry.employeeId) : [];
+  if (!normalized.length) return { assignments: [], laborCost: 0 };
+  const unique = [...new Set(normalized.map((entry) => entry.employeeId))];
+  const marks = unique.map(() => "?").join(",");
+  const employees = await all(env, `SELECT employee_id FROM employees WHERE active=1 AND employee_id IN (${marks})`, unique);
+  if (employees.length !== unique.length) throw new ApiError("INVALID_STUDIO_ASSIGNMENT", "One or more assigned employees are invalid.");
+  const timestamp = now();
+  const statements = [statement(env, "DELETE FROM studio_job_assignments WHERE studio_job_id=?", [studioJobId]), ...normalized.map((entry) => statement(env, "INSERT INTO studio_job_assignments (studio_job_id,employee_id,assigned_hours,hourly_cost,actual_hours,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", [studioJobId, entry.employeeId, entry.assignedHours, entry.hourlyCost, entry.actualHours, timestamp, timestamp]))];
+  await batch(env, statements);
+  return { assignments: normalized, laborCost: round(normalized.reduce((total, entry) => total + entry.hourlyCost * (entry.actualHours || entry.assignedHours), 0)) };
+}
+__name(replaceStudioAssignments, "replaceStudioAssignments");
+async function saveStudioAssignments({ env, actor, data }) {
+  if (!managementActor(actor)) throw new ApiError("FORBIDDEN", "Only management can change studio assignments.", {}, 403);
+  required(data, ["studioJobId", "assignments"]);
+  await accessibleJob(env, data.studioJobId, actor);
+  const result = await replaceStudioAssignments(env, data.studioJobId, data.assignments);
+  const job = await first(env, "SELECT * FROM studio_jobs WHERE studio_job_id=?", [data.studioJobId]);
+  const directCost = data.directCost === void 0 ? round(result.laborCost) : round(data.directCost);
+  await run(env, "UPDATE studio_jobs SET direct_cost=?, updated_at=? WHERE studio_job_id=?", [directCost, now(), data.studioJobId]);
+  await audit(env, actor, "STUDIO_ASSIGNMENTS_UPDATED", "STUDIO_JOB", data.studioJobId, { assignments: result.assignments, directCost });
+  return { assignments: result.assignments, directCost, job: toApi({ ...job, direct_cost: directCost }) };
+}
+__name(saveStudioAssignments, "saveStudioAssignments");
+async function listStudioAssignments({ env, actor, data }) {
+  required(data, ["studioJobId"]);
+  await accessibleJob(env, data.studioJobId, actor);
+  const rows = await all(env, "SELECT a.*, e.full_name, e.email, e.role FROM studio_job_assignments a JOIN employees e ON e.employee_id=a.employee_id WHERE a.studio_job_id=? ORDER BY e.full_name", [data.studioJobId]);
+  const canSeeCost = managementActor(actor) || ["FINANCE", "ACCOUNT_MANAGER"].includes(actor.role);
+  return { assignments: toApiList(canSeeCost ? rows : rows.map((row) => without(row, ["hourly_cost"]))) };
+}
+__name(listStudioAssignments, "listStudioAssignments");
+async function syncStudioStatement(env, actor, studioJobId, salePrice) {
+  const job = await first(env, "SELECT * FROM studio_jobs WHERE studio_job_id=?", [studioJobId]);
+  if (!job || !job.project_id || !job.billable || number(salePrice) <= 0) return null;
+  const existing = await first(env, "SELECT * FROM client_statements WHERE reference_type='STUDIO_JOB' AND reference_id=?", [studioJobId]);
+  const timestamp = now();
+  const record = { statement_entry_id: existing?.statement_entry_id || id("STE"), client_id: job.client_id, project_id: job.project_id, entry_date: timestamp.slice(0, 10), entry_type: "SERVICE", reference_type: "STUDIO_JOB", reference_id: studioJobId, description: job.title, debit: round(salePrice), credit: 0, currency: "EGP", status: job.status === "CANCELLED" ? "CANCELLED" : "POSTED", created_at: existing?.created_at || timestamp, updated_at: timestamp };
+  if (existing) await update(env, "client_statements", record, "statement_entry_id", existing.statement_entry_id);
+  else await insert(env, "client_statements", record);
+  await audit(env, actor, "STUDIO_BILLABLE_SYNCED", "STUDIO_JOB", studioJobId, { salePrice: record.debit, statementEntryId: record.statement_entry_id });
+  return record;
+}
+__name(syncStudioStatement, "syncStudioStatement");
+async function authorizePagePolicy(env, actor, routeName, method) {
+  if (!actor) return;
+  const pageByRoute = {
+    dashboard:'dashboard', clients:'clients', contacts:'clients', projects:'projects',
+    'service.requests':'orders', 'service.request':'orders', 'service.request.reply':'orders', 'service.request.read':'orders',
+    ads:'ads', 'ads.cancel':'ads', 'ads.archive':'ads', 'ads.settings':'ads', 'ads.summary':'ads',
+    'studio.jobs':'studio', 'studio.assets':'studio', 'studio.assignments':'studio',
+    tasks:'tasks', 'task.comments':'tasks', 'task.attachments':'tasks', 'task.workUpdates':'tasks',
+    invoices:'finance', 'invoices.project':'finance', 'invoices.projectPreview':'finance', 'invoices.pdf':'finance', payments:'finance', expenses:'finance', 'client.statement':'finance',
+    'bank.accounts':'banking', 'bank.transactions':'banking', 'bank.deposit':'banking', 'bank.adjustment':'banking',
+    'reports.revenue':'reports', 'reports.profitability':'reports', 'reports.productivity':'reports', 'reports.campaigns':'reports',
+    documents:'documents', users:'employees', 'users.setActive':'employees', 'users.permissions':'employees',
+    approvals:'approvals', audit:'audit', diagnostics:'settings', 'system.settings':'settings', 'system.health':'settings', 'page.policies':'settings'
+  };
+  const pageKey = pageByRoute[routeName];
+  if (!pageKey) return;
+  const portal = managementActor(actor) ? "ADMIN" : actor.userType === "CLIENT" ? "CLIENT" : "EMPLOYEE";
+  if (pageKey === "settings" && primaryManager(actor)) return;
+  if (pageKey === "documents" && portal !== "ADMIN") throw new ApiError("FORBIDDEN", "Documents are restricted to management.", {}, 403);
+  const policy = await first(env, "SELECT visibility,access_level FROM page_policies WHERE page_key=? AND portal=?", [pageKey, portal]);
+  if (policy?.visibility === "HIDDEN") throw new ApiError("PAGE_HIDDEN", "This page is hidden for your portal.", { pageKey, portal }, 403);
+  if (policy?.access_level === "READ_ONLY" && !["GET"].includes(String(method).toUpperCase())) throw new ApiError("PAGE_READ_ONLY", "This page is configured as read-only for your portal.", { pageKey, portal }, 403);
+}
+__name(authorizePagePolicy, "authorizePagePolicy");
 // src/router.js
 var route = /* @__PURE__ */ __name((handler, module, action, options = {}) => ({ handler, module, action, ...options }), "route");
 var financial = /* @__PURE__ */ __name((module, action) => route(null, module, action, { financial: true }), "financial");
@@ -1630,11 +2117,15 @@ var ROUTES = Object.freeze({
   "POST payments": financial("FINANCE", "CREATE"),
   "GET expenses": route(listExpenses, "FINANCE", "VIEW"),
   "POST expenses": financial("FINANCE", "CREATE"),
+  "PUT expenses": financial("FINANCE", "EDIT"),
+  "POST expenses.archive": financial("FINANCE", "EDIT"),
   "GET client.statement": route(getClientStatement, "FINANCE", "VIEW"),
   "GET studio.jobs": route(listStudioJobs, "STUDIO", "VIEW"),
   "POST studio.jobs": route(createStudioJob, "STUDIO", "CREATE"),
   "PUT studio.jobs": route(updateStudioJob, "STUDIO", "EDIT"),
   "POST studio.assets": route(addStudioAsset, "STUDIO", "EDIT"),
+  "GET studio.assignments": route(listStudioAssignments, "STUDIO", "VIEW"),
+  "PUT studio.assignments": route(saveStudioAssignments, "STUDIO", "EDIT"),
   "GET users": route(listUsers, "USERS", "VIEW"),
   "POST users": route(createUser, "USERS", "CREATE"),
   "PUT users": route(updateUser, "USERS", "EDIT"),
@@ -1642,6 +2133,23 @@ var ROUTES = Object.freeze({
   "DELETE users": route(deleteUser, "USERS", "DELETE"),
   "POST users.permissions": route(setUserPermissions, "USERS", "APPROVE"),
   "GET system.settings": route(getSystemSettings, "SYSTEM", "VIEW"),
+  "GET system.health": route(systemHealthMonitor, "SYSTEM", "VIEW"),
+  "GET page.policies": route(listPagePolicies, "PORTALS", "VIEW"),
+  "PUT page.policies": route(savePagePolicy, "SYSTEM", "EDIT"),
+  "GET note.labels": route(listNoteLabels, "PORTALS", "VIEW"),
+  "POST note.labels": route(saveNoteLabel, "SYSTEM", "EDIT"),
+  "GET notes": route(listNotes, "PORTALS", "VIEW"),
+  "POST notes": route(createNote, "PORTALS", "EDIT"),
+  "GET notifications": route(listPopupNotifications, "PORTALS", "VIEW"),
+  "GET notifications.manage": route(listManagedNotifications, "SYSTEM", "VIEW"),
+  "POST notifications": route(createPopupNotification, "SYSTEM", "EDIT"),
+  "PUT notifications": route(updatePopupNotification, "SYSTEM", "EDIT"),
+  "POST notifications.ack": route(acknowledgePopupNotification, "PORTALS", "EDIT"),
+  "GET service.requests": route(listServiceRequests, "PORTALS", "VIEW"),
+  "GET service.request": route(getServiceRequest, "PORTALS", "VIEW"),
+  "POST service.requests": route(createServiceRequest, "PORTALS", "CREATE"),
+  "POST service.request.reply": route(replyServiceRequest, "PORTALS", "EDIT"),
+  "POST service.request.read": route(markServiceRequestRead, "PORTALS", "EDIT"),
   "PUT system.settings": route(saveSystemSettings, "SYSTEM", "EDIT"),
   "GET documents": route(listDocuments, "PORTALS", "VIEW"),
   "POST documents": route(createDocument, "PORTALS", "EDIT"),
@@ -2157,7 +2665,8 @@ async function recordPayment({ env, actor, data }) {
 __name(recordPayment, "recordPayment");
 async function createExpense({ env, actor, data }) {
   required(data, ["expenseDate", "category", "description", "amount"]);
-  const expense = { expense_id: id("EXP"), expense_date: data.expenseDate, category: text(data.category), description: text(data.description), client_id: data.clientId || null, project_id: data.projectId || null, amount: round(data.amount), currency: data.currency || "EGP", vendor: text(data.vendor), payment_method: text(data.paymentMethod), created_by: actor.email, created_at: now() };
+  const timestamp = now();
+  const expense = { expense_id: id("EXP"), expense_date: data.expenseDate, category: text(data.category), description: text(data.description), client_id: data.clientId || null, project_id: data.projectId || null, amount: round(data.amount), currency: data.currency || "EGP", vendor: text(data.vendor), payment_method: text(data.paymentMethod), created_by: actor.email, created_at: timestamp, status: "ACTIVE", updated_at: timestamp, archived_at: null };
   const statements = [prepared(env, insertSql("expenses", expense))];
   let transaction = null;
   if (bool(data.autoDebit)) {
@@ -2172,6 +2681,63 @@ async function createExpense({ env, actor, data }) {
   return { expense: toApi(expense), bankTransaction: toApi(transaction) };
 }
 __name(createExpense, "createExpense");
+async function updateExpense({ env, actor, data }) {
+  required(data, ["expenseId"]);
+  const existing = await first(env, "SELECT * FROM expenses WHERE expense_id = ?", [data.expenseId]);
+  if (!existing) throw new ApiError("EXPENSE_NOT_FOUND", "Expense not found.", {}, 404);
+  if (existing.status === "ARCHIVED") throw new ApiError("EXPENSE_ARCHIVED", "Archived expenses cannot be edited.", {}, 409);
+  const nextAmount = data.amount === void 0 ? number(existing.amount) : round(data.amount);
+  if (nextAmount <= 0) throw new ApiError("INVALID_AMOUNT", "Expense amount must be greater than zero.");
+  const transaction = await first(env, "SELECT * FROM bank_transactions WHERE reference_type='EXPENSE' AND reference_id=? AND transaction_type='EXPENSE_DEBIT' AND status!='REVERSED'", [existing.expense_id]);
+  const statements = [];
+  if (transaction && nextAmount !== number(existing.amount)) {
+    const account = await first(env, "SELECT * FROM bank_accounts WHERE bank_account_id=?", [transaction.bank_account_id]);
+    const delta = round(nextAmount - number(existing.amount));
+    const nextBalance = round(number(account.current_balance) - delta);
+    const config = await settings(env);
+    if (nextBalance < 0 && !config.allowNegative) throw new ApiError("INSUFFICIENT_BANK_BALANCE", "The expense change exceeds the bank balance.", { currentBalance: account.current_balance, required: delta }, 409);
+    statements.push(statement(env, "UPDATE bank_accounts SET current_balance=?, updated_at=? WHERE bank_account_id=?", [nextBalance, now(), account.bank_account_id]));
+    statements.push(statement(env, "UPDATE bank_transactions SET amount=?, description=?, updated_at=? WHERE transaction_id=?", [nextAmount, data.description ?? existing.description, now(), transaction.transaction_id]));
+  }
+  const saved = { ...existing,
+    expense_date: data.expenseDate ?? existing.expense_date,
+    category: data.category ?? existing.category,
+    description: data.description ?? existing.description,
+    client_id: data.clientId === void 0 ? existing.client_id : data.clientId || null,
+    project_id: data.projectId === void 0 ? existing.project_id : data.projectId || null,
+    amount: nextAmount,
+    currency: data.currency ?? existing.currency,
+    vendor: data.vendor ?? existing.vendor,
+    payment_method: data.paymentMethod ?? existing.payment_method,
+    updated_at: now()
+  };
+  statements.unshift(prepared(env, updateSql("expenses", saved, "expense_id", saved.expense_id)));
+  await batch(env, statements);
+  await audit(env, actor, "EXPENSE_UPDATED", "EXPENSE", saved.expense_id, data);
+  return { expense: toApi(saved) };
+}
+__name(updateExpense, "updateExpense");
+
+async function archiveExpense({ env, actor, data }) {
+  required(data, ["expenseId"]);
+  const existing = await first(env, "SELECT * FROM expenses WHERE expense_id=?", [data.expenseId]);
+  if (!existing) throw new ApiError("EXPENSE_NOT_FOUND", "Expense not found.", {}, 404);
+  if (existing.status === "ARCHIVED") return { archived: true, expense: toApi(existing) };
+  const timestamp = now();
+  const statements = [statement(env, "UPDATE expenses SET status='ARCHIVED', archived_at=?, updated_at=? WHERE expense_id=?", [timestamp, timestamp, existing.expense_id])];
+  const transaction = await first(env, "SELECT * FROM bank_transactions WHERE reference_type='EXPENSE' AND reference_id=? AND transaction_type='EXPENSE_DEBIT' AND status!='REVERSED'", [existing.expense_id]);
+  let reversal = null;
+  if (transaction) {
+    reversal = bankTransaction({ bankAccountId: transaction.bank_account_id, amount: transaction.amount, type: "EXPENSE_REVERSAL", referenceType: "EXPENSE", referenceId: existing.expense_id, description: `Expense reversal: ${existing.description}` });
+    statements.push(prepared(env, insertSql("bank_transactions", reversal)));
+    statements.push(statement(env, "UPDATE bank_transactions SET status='REVERSED', updated_at=? WHERE transaction_id=?", [timestamp, transaction.transaction_id]));
+    statements.push(statement(env, "UPDATE bank_accounts SET current_balance=current_balance+?, updated_at=? WHERE bank_account_id=?", [transaction.amount, timestamp, transaction.bank_account_id]));
+  }
+  await batch(env, statements);
+  await audit(env, actor, "EXPENSE_ARCHIVED", "EXPENSE", existing.expense_id, { reason: text(data.reason), reversalId: reversal?.transaction_id || "" });
+  return { archived: true, expense: toApi({ ...existing, status: "ARCHIVED", archived_at: timestamp, updated_at: timestamp }), reversal: toApi(reversal) };
+}
+__name(archiveExpense, "archiveExpense");
 async function createInvoicePdf({ env, actor, data }) {
   required(data, ["invoiceId"]);
   const [invoice, items, payments, settingsRows] = await Promise.all([
@@ -2217,7 +2783,9 @@ var OPERATIONS = Object.freeze({
   "PUT invoices": updateInvoice,
   "POST invoices.pdf": createInvoicePdf,
   "POST payments": recordPayment,
-  "POST expenses": createExpense
+  "POST expenses": createExpense,
+  "PUT expenses": updateExpense,
+  "POST expenses.archive": archiveExpense
 });
 async function dispatchFinancial(operation, context) {
   const handler = OPERATIONS[operation];
@@ -2294,7 +2862,8 @@ async function parsePayload(request) {
 }
 __name(parsePayload, "parsePayload");
 var index_default = {
-  async fetch(request, env) {
+  async fetch(request, env, executionContext) {
+    const requestStartedAt = Date.now();
     const requestId = crypto.randomUUID();
     let origin = "";
     let actor = null;
@@ -2317,13 +2886,18 @@ var index_default = {
         if (definition.bootstrap && !payload.idToken) actor = null;
         else actor = await authenticate(env, payload.idToken);
         if (actor) await authorize(env, actor, definition.module, definition.action);
+        if (actor) await authorizePagePolicy(env, actor, payload.route, payload.method);
       }
       const context = { env, actor, data: payload.data, request, requestId };
       const result = definition.financial ? await financialCall(env, key, actor, payload.data, payload.idempotencyKey) : await definition.handler(context);
-      return success(result, 200, corsHeaders);
+      const response = success(result, 200, corsHeaders);
+      executionContext?.waitUntil(recordRequestMetric(env, routeName, request.method, response.status, Date.now() - requestStartedAt));
+      return response;
     } catch (error) {
       if (env.DB) await auditError(env, actor, error, requestId, routeName);
-      return failure(error, cors(origin));
+      const response = failure(error, cors(origin));
+      executionContext?.waitUntil(recordRequestMetric(env, routeName, request.method, response.status, Date.now() - requestStartedAt));
+      return response;
     }
   }
 };
