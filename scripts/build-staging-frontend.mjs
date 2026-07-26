@@ -65,6 +65,21 @@ const config = `window.APP_CONFIG = Object.freeze({
 });
 `;
 await writeFile(path.join(outputDir, 'config.js'), config, 'utf8');
+
+const routeShells = [
+  'dashboard', 'clients', 'projects', 'orders', 'ads', 'studio', 'tasks', 'finance',
+  'banking', 'reports', 'documents', 'employees', 'approvals', 'audit', 'settings',
+  'operations', 'users', 'profitability', 'billing', 'clientportal', 'employeeportal',
+  'adminportal', 'status', 'alerts'
+];
+for (const route of routeShells) {
+  const routeDirectory = path.join(outputDir, route);
+  await rm(routeDirectory, { recursive: true, force: true });
+  await mkdir(routeDirectory, { recursive: true });
+  await cp(path.join(outputDir, 'index.html'), path.join(routeDirectory, 'index.html'));
+}
+await rm(path.join(outputDir, '_headers'), { force: true });
+await rm(path.join(outputDir, '_redirects'), { force: true });
 await cp(path.join(outputDir, 'index.html'), path.join(outputDir, '404.html'));
 await writeFile(path.join(outputDir, '.nojekyll'), '', 'utf8');
 
