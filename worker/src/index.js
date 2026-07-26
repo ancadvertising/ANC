@@ -961,7 +961,7 @@ async function addWorkUpdate({ env, actor, data }) {
 __name(addWorkUpdate, "addWorkUpdate");
 
 // src/routes/studio.js
-var JOB_TYPES = ["PHOTOGRAPHY", "VIDEOGRAPHY", "EDITING", "DESIGN", "DELIVERY"];
+var JOB_TYPES = ["PHOTOGRAPHY", "VIDEOGRAPHY", "EDITING", "DESIGN", "DELIVERY", "EQUIPMENT_RENTAL"];
 var unrestricted2 = /* @__PURE__ */ __name((actor) => actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ASSISTANT_MANAGER", "ACCOUNT_MANAGER"].includes(actor.role), "unrestricted");
 async function selectedEmployee2(env, value) {
   const employeeId = text(value);

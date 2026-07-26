@@ -1,6 +1,14 @@
 (() => {
   const esc = UI.escape;
   const truthy = value => value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+  const JOB_TYPE_OPTIONS = Object.freeze([
+    { value: 'PHOTOGRAPHY', label: 'Photography' },
+    { value: 'VIDEOGRAPHY', label: 'Videography' },
+    { value: 'EDITING', label: 'Editing' },
+    { value: 'DESIGN', label: 'Design' },
+    { value: 'DELIVERY', label: 'Delivery' },
+    { value: 'EQUIPMENT_RENTAL', label: 'Equipment Rental' }
+  ]);
 
   function isManagement() {
     const user = window.ANC_CURRENT_USER || {};
@@ -34,12 +42,11 @@
     const projectId = job['Project ID'] || '';
     const clientOptions = [`<option value="">اختر العميل</option>`].concat(clients.map(row => option(row['Client ID'], row['Client Name'], row['Client ID'] === clientId))).join('');
     const projectOptions = [`<option value="">بدون مشروع</option>`].concat(projects.map(row => option(row['Project ID'], row['Project Name'], row['Project ID'] === projectId, ` data-client="${esc(row['Client ID'])}"`))).join('');
-    const types = ['PHOTOGRAPHY','VIDEOGRAPHY','EDITING','DESIGN','DELIVERY'];
     const statuses = ['TODO','IN_PROGRESS','IN_REVIEW','DONE','CANCELLED'];
     return `<form class="form-grid studio-job-form">
       ${management ? `<div class="field"><label>العميل</label><select name="clientId" required>${clientOptions}</select></div>
       <div class="field"><label>المشروع</label><select name="projectId">${projectOptions}</select></div>
-      <div class="field"><label>نوع العمل</label><select name="jobType">${types.map(type => option(type,type,type === (job['Job Type'] || 'DESIGN'))).join('')}</select></div>
+      <div class="field"><label>نوع العمل</label><select name="jobType">${JOB_TYPE_OPTIONS.map(type => option(type.value,type.label,type.value === (job['Job Type'] || 'DESIGN'))).join('')}</select></div>
       <div class="field"><label>موعد التسليم</label><input name="dueDate" type="date" value="${esc(String(job['Due Date'] || '').slice(0,10))}"></div>
       <div class="field wide"><label>العنوان</label><input name="title" required value="${esc(job.Title || '')}"></div>` : ''}
       <div class="field"><label>الحالة</label><select name="status">${statuses.map(status => option(status,status,status === (job.Status || 'TODO'))).join('')}</select></div>
@@ -137,7 +144,7 @@
     <section class="card"><div class="card-header"><div><h2>أعمال الاستوديو</h2><p class="muted">إسناد متعدد للموظفين، تتبع الساعات والتكلفة، وربط البنود القابلة للفوترة بالمشروع.</p></div>${isManagement() && context.clients.length ? '<button class="btn btn-primary" id="new-job">عمل جديد</button>' : ''}</div>
       ${UI.table(jobs, [
         {key:'Title',label:'العمل'},
-        {key:'Job Type',label:'النوع',render:UI.badge},
+        {key:'Job Type',label:'النوع',render:value => UI.badge(JOB_TYPE_OPTIONS.find(type => type.value === value)?.label || value)},
         {key:'Assigned To',label:'المسؤول'},
         {key:'Due Date',label:'التسليم',render:UI.date},
         {key:'Status',label:'الحالة',render:UI.badge},

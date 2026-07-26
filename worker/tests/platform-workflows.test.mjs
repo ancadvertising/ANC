@@ -59,3 +59,14 @@ test('migration contains the workflow schema and remains append-only', async () 
   assert.match(migration, /ALTER TABLE paid_ads ADD COLUMN archived/);
   assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM/i);
 });
+test('studio supports equipment rental jobs end to end', async () => {
+  const [worker, studio] = await Promise.all([
+    read('worker/src/index.js'),
+    read('frontend/js/studio.js')
+  ]);
+
+  assert.match(worker, /JOB_TYPES = \[[^\]]*"EQUIPMENT_RENTAL"/);
+  assert.match(studio, /value: 'EQUIPMENT_RENTAL', label: 'Equipment Rental'/);
+  assert.match(studio, /name="jobType"/);
+  assert.match(studio, /JOB_TYPE_OPTIONS\.map\(type => option\(type\.value,type\.label/);
+});
