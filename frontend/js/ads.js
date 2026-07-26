@@ -129,7 +129,7 @@
       "<div class='table-actions'>",
       !archived && !cancelled ? "<button class='btn' data-ad-edit='" + esc(row['Ad ID']) + "'>تعديل</button>" : '',
       "<button class='btn' data-ad-archive='" + esc(row['Ad ID']) + "' data-archived='" + (archived ? '0' : '1') + "'>" + (archived ? 'استعادة' : 'أرشفة') + "</button>",
-      !cancelled ? "<button class='btn danger-button' data-ad-cancel='" + esc(row['Ad ID']) + "'>حذف / إلغاء</button>" : '',
+      !cancelled ? "<button class='btn danger-button' data-ad-delete='" + esc(row['Ad ID']) + "'>حذف آمن</button>" : '',
       "</div>"
     ].join('');
   }
@@ -178,10 +178,12 @@
     const reload = () => load();
     document.querySelector('#toggle-ad-archive').addEventListener('click', () => { showArchived = !showArchived; load(); });
     document.querySelector('#new-ad')?.addEventListener('click', () => openEditor(null, context, reload));
-    document.querySelectorAll('[data-ad-edit]').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-ad-edit]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
       openEditor(ads.find(row => row['Ad ID'] === button.dataset.adEdit), context, reload);
     }));
-    document.querySelectorAll('[data-ad-archive]').forEach(button => button.addEventListener('click', async () => {
+    document.querySelectorAll('[data-ad-archive]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
       try {
         button.disabled = true;
         await API.post('ads.archive', { adId:button.dataset.adArchive, archived:button.dataset.archived === '1' });
@@ -192,15 +194,16 @@
         button.disabled = false;
       }
     }));
-    document.querySelectorAll('[data-ad-cancel]').forEach(button => button.addEventListener('click', () => {
-      const modal = UI.modal('إلغاء الإعلان', "<form class='form-grid'><div class='field wide'><label>سبب الإلغاء</label><textarea name='cancellationReason' required></textarea></div><div class='field'><label>مبلغ الاسترداد البنكي (إن وجد)</label><input name='refundAmount' type='number' min='0' step='0.01' value='0'></div><div class='wide actions'><button class='btn danger-button' type='submit'>تأكيد الإلغاء</button></div></form>");
+    document.querySelectorAll('[data-ad-delete]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const modal = UI.modal('حذف / إلغاء الإعلان', "<form class='form-grid'><div class='field wide'><label>سبب الإلغاء</label><textarea name='cancellationReason' required></textarea></div><div class='field'><label>مبلغ الاسترداد البنكي (إن وجد)</label><input name='refundAmount' type='number' min='0' step='0.01' value='0'></div><div class='wide actions'><button class='btn danger-button' type='submit'>إرسال طلب الحذف</button></div></form>");
       const form = modal.querySelector('form');
       form.addEventListener('submit', event => {
         event.preventDefault();
         UI.submit(form, async data => {
-          data.adId = button.dataset.adCancel;
+          data.adId = button.dataset.adDelete;
           await API.post('ads.cancel', data);
-          UI.toast('تم إلغاء الإعلان مع الاحتفاظ بالأثر المحاسبي.');
+          UI.toast('تم إرسال طلب حذف الإعلان للاعتماد مع الحفاظ على الأثر المحاسبي.');
           modal.remove();
           await reload();
         });

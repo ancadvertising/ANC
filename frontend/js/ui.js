@@ -6,12 +6,30 @@ window.UI = (() => {
 
   const escape = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
   const locale = () => document.documentElement.lang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn';
-  const money = (value, currency = APP_CONFIG.DEFAULT_CURRENCY) => new Intl.NumberFormat(locale(), {
-    style: 'currency',
-    currency: currency || APP_CONFIG.DEFAULT_CURRENCY,
-    numberingSystem: 'latn',
-    maximumFractionDigits: 2
-  }).format(Number(value) || 0);
+  function resolveCurrency(currencyOrRow) {
+    const configured = String(APP_CONFIG.DEFAULT_CURRENCY || 'EGP').trim().toUpperCase();
+    const fallback = /^[A-Z]{3}$/.test(configured) ? configured : 'EGP';
+    const candidate = currencyOrRow && typeof currencyOrRow === 'object'
+      ? currencyOrRow.Currency || currencyOrRow.currency
+      : currencyOrRow;
+    const normalized = String(candidate || fallback).trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(normalized) ? normalized : fallback;
+  }
+
+  function money(value, currencyOrRow = APP_CONFIG.DEFAULT_CURRENCY) {
+    const amount = Number(value) || 0;
+    const currency = resolveCurrency(currencyOrRow);
+    try {
+      return new Intl.NumberFormat(locale(), {
+        style: 'currency',
+        currency,
+        numberingSystem: 'latn',
+        maximumFractionDigits: 2
+      }).format(amount);
+    } catch (error) {
+      return `${number(amount)} ${currency}`;
+    }
+  }
   const number = value => new Intl.NumberFormat(locale(), {
     numberingSystem: 'latn',
     maximumFractionDigits: 2

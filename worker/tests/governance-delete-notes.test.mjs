@@ -51,7 +51,7 @@ test('safe delete is visible across managed records and always requests approval
   assert.match(app, /deleteEntity\('project'/);
   assert.match(users, /data-user-delete/);
   assert.match(api, /'DELETE users': \['USER','userId','DELETE'\]/);
-  assert.match(ads, /data-ad-cancel/);
+  assert.match(ads, /data-ad-delete/);
   assert.match(api, /'POST ads\.cancel': \['AD','adId','DELETE'\]/);
   assert.match(tasks, /data-task-delete/);
   assert.match(tasks, /entityType:'TASK'.*action:'DELETE'/s);
@@ -69,4 +69,12 @@ test('safe delete is visible across managed records and always requests approval
   assert.match(worker, /PROJECT_HAS_ACTIVE_WORK/);
   assert.match(worker, /INVOICE_HAS_PAYMENTS/);
   assert.match(worker, /\["ARCHIVE", "DELETE"\]\.includes\(action\)/);
+});
+test('money formatter accepts a table row without treating it as a currency code', async () => {
+  const ui = await read('frontend/js/ui.js');
+
+  assert.match(ui, /typeof currencyOrRow === 'object'/);
+  assert.match(ui, /currencyOrRow\.Currency \|\| currencyOrRow\.currency/);
+  assert.match(ui, /\^\[A-Z\]\{3\}\$/);
+  assert.match(ui, /const currency = resolveCurrency\(currencyOrRow\)/);
 });
