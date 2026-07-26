@@ -48,7 +48,7 @@ __name(cors, "cors");
 // src/constants.js
 var APP = Object.freeze({
   name: "ANC Marketing Agency ERP",
-  version: "3.1.0",
+  version: "3.1.1",
   currency: "EGP",
   timezone: "Africa/Cairo"
 });
