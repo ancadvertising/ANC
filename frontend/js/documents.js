@@ -56,7 +56,7 @@
   function actions(_,row,canArchive) {
     return "<div class='table-actions'>" +
       (row['File URL'] ? "<a class='btn' href='" + esc(row['File URL']) + "' target='_blank' rel='noopener'>فتح</a>" : '') +
-      (canArchive && row.Status === 'ACTIVE' ? "<button class='btn danger-button' data-document-archive='" + esc(row['Document ID']) + "'>أرشفة</button>" : '') +
+      (canArchive && row.Status === 'ACTIVE' ? "<button class='btn' data-document-archive='" + esc(row['Document ID']) + "'>أرشفة</button><button class='btn danger-button' data-document-delete='" + esc(row['Document ID']) + "'>حذف آمن</button>" : '') +
     "</div>";
   }
 
@@ -70,7 +70,7 @@
     const clients = clientData.clients || [];
     const projects = projectData.projects || [];
     const role = String(currentUser.role || '').toUpperCase();
-    const canArchive = currentUser.userType === 'ADMIN' || role === 'ADMIN' || role === 'MANAGER';
+    const canArchive = currentUser.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER'].includes(role);
     const canUpload = currentUser.userType !== 'CLIENT';
 
     UI.setMain(
@@ -131,7 +131,19 @@
         button.disabled = false;
       }
     }));
+    document.querySelectorAll('[data-document-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب حذف آمن للمستند إلى المدير الأساسي. سيبقى سجل التدقيق والملف محفوظين وفق سياسة الأرشفة. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({entityType:'DOCUMENT',entityId:button.dataset.documentDelete,action:'DELETE',payload:{reason:'Safe delete requested from documents list'},description:'طلب حذف آمن لمستند من القائمة'});
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
   }
-
   ANCPageModules.documents = { load };
 })();

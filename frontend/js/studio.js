@@ -114,7 +114,7 @@
   function actions(_, row) {
     return `<div class="table-actions">
       <button class="btn" data-job-edit="${esc(row['Studio Job ID'])}">${isManagement() ? 'تعديل' : 'تحديث التقدم'}</button>
-      ${isManagement() && row.Status !== 'CANCELLED' ? `<button class="btn danger-button" data-job-archive="${esc(row['Studio Job ID'])}">أرشفة</button>` : ''}
+      ${isManagement() && row.Status !== 'CANCELLED' ? `<button class="btn" data-job-archive="${esc(row['Studio Job ID'])}">أرشفة</button><button class="btn danger-button" data-job-delete="${esc(row['Studio Job ID'])}">حذف آمن</button>` : ''}
     </div>`;
   }
 
@@ -160,6 +160,19 @@
         button.disabled = true;
         await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobArchive, action:'ARCHIVE', description:'طلب أرشفة عمل استوديو من القائمة' });
         UI.toast('تم إرسال طلب الأرشفة للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
+    document.querySelectorAll('[data-job-delete]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب حذف آمن لعمل الاستوديو إلى المدير الأساسي. سيظل سجل التدقيق محفوظًا. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobDelete, action:'DELETE', payload:{reason:'Safe delete requested from studio list'}, description:'طلب حذف آمن لعمل استوديو من القائمة' });
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {

@@ -720,6 +720,10 @@ async function executeApprovedChange(env, actor, request) {
   const action = request.action;
   if (entityType === "CLIENT") {
     if (action === "CREATE") return createClient({ env, actor, data: payload });
+    if (action === "DELETE") {
+      const openProjects = await first(env, "SELECT COUNT(*) AS count FROM projects WHERE client_id=? AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED')", [request.entity_id]);
+      if (number(openProjects?.count) > 0) throw new ApiError("CLIENT_HAS_OPEN_PROJECTS", "Complete, cancel, or archive the client's open projects before safe deletion.", { openProjects: number(openProjects.count) }, 409);
+    }
     payload.clientId = request.entity_id;
     if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "ARCHIVED";
     if (action === "RESTORE") payload.status = "ACTIVE";
@@ -727,6 +731,11 @@ async function executeApprovedChange(env, actor, request) {
   }
   if (entityType === "PROJECT") {
     if (action === "CREATE") return createProject({ env, actor, data: payload });
+    if (action === "DELETE") {
+      const dependencies = await first(env, "SELECT (SELECT COUNT(*) FROM tasks WHERE project_id=? AND status NOT IN ('DONE','BLOCKED')) AS tasks, (SELECT COUNT(*) FROM paid_ads WHERE project_id=? AND status!='CANCELLED') AS ads, (SELECT COUNT(*) FROM studio_jobs WHERE project_id=? AND status NOT IN ('DONE','CANCELLED')) AS studio", [request.entity_id, request.entity_id, request.entity_id]);
+      const activeDependencies = number(dependencies?.tasks) + number(dependencies?.ads) + number(dependencies?.studio);
+      if (activeDependencies > 0) throw new ApiError("PROJECT_HAS_ACTIVE_WORK", "Finish, cancel, or archive active project work before safe deletion.", { tasks: number(dependencies.tasks), ads: number(dependencies.ads), studio: number(dependencies.studio) }, 409);
+    }
     payload.projectId = request.entity_id;
     if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "CANCELLED";
     if (action === "RESTORE") payload.status = "PLANNED";
@@ -770,6 +779,10 @@ async function executeApprovedChange(env, actor, request) {
     throw new ApiError("APPROVAL_ACTION_UNSUPPORTED", "Only document archiving is supported.");
   }
   if (entityType === "INVOICE") {
+    if (action === "DELETE") {
+      const payments = await first(env, "SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE invoice_id=?", [request.entity_id]);
+      if (number(payments?.paid) > 0) throw new ApiError("INVOICE_HAS_PAYMENTS", "A paid or partially paid invoice cannot be safely deleted. Reverse its payments first.", { paid: number(payments.paid) }, 409);
+    }
     payload.invoiceId = request.entity_id;
     if (["ARCHIVE", "DELETE"].includes(action)) payload.status = "CANCELLED";
     if (action === "RESTORE") payload.status = "DRAFT";
@@ -1829,8 +1842,10 @@ async function createNote({ env, actor, data }) {
     const found = await all(env, `SELECT label_id FROM note_labels WHERE active=1 AND label_id IN (${marks})`, labelIds);
     if (found.length !== labelIds.length) throw new ApiError("INVALID_NOTE_LABEL", "One or more note labels are invalid.");
   }
+  const body = text(data.body).slice(0, 5000);
+  if (!body) throw new ApiError("VALIDATION_ERROR", "Note body is required.");
   const timestamp = now();
-  const record = { note_id: id("NTE"), entity_type: entityType, entity_id: entityId, body: text(data.body).slice(0, 5000), created_by_user_id: actor.userId, created_by_name: actor.name || actor.email, created_by_email: actor.email, created_at: timestamp, updated_at: timestamp, archived: 0 };
+  const record = { note_id: id("NTE"), entity_type: entityType, entity_id: entityId, body, created_by_user_id: actor.userId, created_by_name: actor.name || actor.email, created_by_email: actor.email, created_at: timestamp, updated_at: timestamp, archived: 0 };
   const statements = [prepared(env, insertSql("entity_notes", record)), ...labelIds.map((labelId) => statement(env, "INSERT INTO note_label_links (note_id,label_id) VALUES (?,?)", [record.note_id, labelId]))];
   await batch(env, statements);
   await audit(env, actor, "NOTE_CREATED", entityType, entityId, { noteId: record.note_id, labelIds });

@@ -64,7 +64,8 @@
   function expenseActions(_, row) {
     return "<div class='table-actions'>" +
       "<button class='btn' data-expense-edit='" + esc(row['Expense ID']) + "'>تعديل</button>" +
-      "<button class='btn danger-button' data-expense-archive='" + esc(row['Expense ID']) + "'>أرشفة</button>" +
+      "<button class='btn' data-expense-archive='" + esc(row['Expense ID']) + "'>أرشفة</button>" +
+      "<button class='btn danger-button' data-expense-delete='" + esc(row['Expense ID']) + "'>حذف آمن</button>" +
     "</div>";
   }
   function projectInvoiceForm(clients, projects) {
@@ -153,11 +154,18 @@
     return () => lastPreview;
   }
 
+  function accountActions(_, row) {
+    const active = row.Active === true || row.Active === 1 || row.Active === '1' || String(row.Active).toLowerCase() === 'true';
+    return active ? "<div class='table-actions'><button class='btn danger-button' data-account-delete='" + esc(row['Bank Account ID']) + "'>حذف آمن</button></div>" : UI.badge('INACTIVE');
+  }
   function invoiceActions(_, row) {
     const balance = Number(row['Balance Due'] || 0);
+    const paid = Number(row['Paid Amount'] || 0);
+    const cancelled = row.Status === 'CANCELLED';
     return "<div class='table-actions'>" +
       "<button class='btn' data-invoice-pdf='" + esc(row['Invoice ID']) + "'>PDF</button>" +
-      (balance > 0 ? "<button class='btn btn-primary' data-invoice-payment='" + esc(row['Invoice ID']) + "'>تسجيل دفع</button>" : '') +
+      (balance > 0 && !cancelled ? "<button class='btn btn-primary' data-invoice-payment='" + esc(row['Invoice ID']) + "'>تسجيل دفع</button>" : '') +
+      (!cancelled ? "<button class='btn danger-button' data-invoice-delete='" + esc(row['Invoice ID']) + "'" + (paid > 0 ? " disabled title='لا يمكن حذف فاتورة لها مدفوعات'" : '') + ">حذف آمن</button>" : '') +
     "</div>";
   }
 
@@ -210,7 +218,8 @@
         {key:'Bank Name',label:'البنك'},
         {key:'Account Number Masked',label:'الرقم'},
         {key:'Current Balance',label:'الرصيد',render:UI.money},
-        {key:'Active',label:'نشط',render:UI.badge}
+        {key:'Active',label:'نشط',render:UI.badge},
+        {key:'Bank Account ID',label:'الإجراءات',render:accountActions}
       ]) +
       "</section>" +
       "<section class='card'><div class='card-header'><div><h2>الفواتير</h2><p class='muted'>الفاتورة تُنشأ من البنود غير المفوترة داخل مشروع واحد، وتعرض اسم العميل والمشروع.</p></div><button class='btn btn-primary' id='new-invoice'>فاتورة مشروع جديدة</button></div>" +
@@ -348,6 +357,44 @@
           await reload();
         });
       });
+    }));
+    document.querySelectorAll('[data-account-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب تعطيل وحذف آمن للحساب البنكي إلى المدير الأساسي، مع الاحتفاظ بكل الحركات التاريخية. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({entityType:'BANK_ACCOUNT',entityId:button.dataset.accountDelete,action:'DELETE',payload:{reason:'Safe delete requested from bank accounts list'},description:'طلب حذف آمن لحساب بنكي مع الاحتفاظ بالحركات'});
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
+    document.querySelectorAll('[data-expense-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب حذف آمن للمصروف إلى المدير الأساسي، وعند اعتماده ستُعكس الحركة البنكية دون محوها. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({entityType:'EXPENSE',entityId:button.dataset.expenseDelete,action:'DELETE',payload:{reason:'Safe delete requested from expenses list'},description:'طلب حذف آمن لمصروف مع عكس الحركة البنكية'});
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
+    document.querySelectorAll('[data-invoice-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (button.disabled || !confirm('سيتم إرسال طلب إلغاء وحذف آمن للفاتورة إلى المدير الأساسي، مع الاحتفاظ بسجلها. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({entityType:'INVOICE',entityId:button.dataset.invoiceDelete,action:'DELETE',payload:{reason:'Safe delete requested from invoices list'},description:'طلب حذف آمن لفاتورة غير مسددة'});
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+        button.disabled = false;
+      }
     }));
   }
 

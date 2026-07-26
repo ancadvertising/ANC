@@ -813,12 +813,13 @@ function approvalCard(request) {
 }
 
 function actionLabel(action) {
-  return ({ CREATE: 'إنشاء', UPDATE: 'تعديل', STATUS: 'تغيير حالة', ARCHIVE: 'أرشفة', RESTORE: 'استعادة' })[action] || action;
+  return ({ CREATE: 'إنشاء', UPDATE: 'تعديل', STATUS: 'تغيير حالة', ARCHIVE: 'أرشفة', RESTORE: 'استعادة', DELETE: 'حذف آمن' })[action] || action;
 }
 
 function changeSummary(request) {
   if (request.action === 'ARCHIVE') return '<span>أرشفة السجل مع الاحتفاظ بالتاريخ والروابط.</span>';
   if (request.action === 'RESTORE') return '<span>استعادة السجل المؤرشف إلى القوائم النشطة.</span>';
+  if (request.action === 'DELETE') return '<span>حذف آمن للسجل بعد الاعتماد، دون محو سجل التدقيق أو القيود التاريخية.</span>';
   const labels = {
     name: 'الاسم', status: 'الحالة', primaryContact: 'جهة الاتصال', industry: 'النشاط',
     phone: 'الهاتف', email: 'البريد', notes: 'الملاحظات', clientId: 'العميل',
@@ -913,6 +914,7 @@ function entityActions(entityType, entity) {
       <button class="ghost-button" type="button" data-action="edit-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تعديل${suffix}</button>
       <button class="ghost-button" type="button" data-action="status-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تغيير الحالة${suffix}</button>
       <button class="ghost-button ${entity.archived ? '' : 'danger-button'}" type="button" data-action="${entity.archived ? 'restore' : 'archive'}-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending ? 'disabled' : ''}>${entity.archived ? 'استعادة' : 'أرشفة'}${suffix}</button>
+      ${entity.archived ? '' : `<button class="ghost-button danger-button" type="button" data-action="delete-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending ? 'disabled' : ''}>حذف آمن${suffix}</button>`}
     </div>
   `;
 }
@@ -1292,6 +1294,12 @@ function applyApprovedChange(entityType, entityId, action, payload) {
     record.status = entityType === 'client' ? 'INACTIVE' : 'CANCELLED';
     record.updatedAt = now;
   }
+  if (action === 'DELETE') {
+    record.archived = true;
+    record.archivedAt = now;
+    record.status = entityType === 'client' ? 'INACTIVE' : 'CANCELLED';
+    record.updatedAt = now;
+  }
   if (action === 'RESTORE') {
     record.archived = false;
     record.archivedAt = '';
@@ -1315,6 +1323,19 @@ async function archiveOrRestoreEntity(entityType, entityId, restore) {
   await requestOrApplyChange(entityType, entityId, restore ? 'RESTORE' : 'ARCHIVE', record, `${verb} «${record.name}»`);
 }
 
+async function deleteEntity(entityType, entityId) {
+  const record = findEntity(entityType, entityId);
+  if (!record || record.archived) return;
+  if (entityType === 'client') {
+    const activeProjects = state.projects.some((project) => project.clientId === entityId && !project.archived && !['COMPLETED', 'CANCELLED'].includes(project.status));
+    if (activeProjects) {
+      showToast('تعذر حذف العميل', 'أوقف أو أكمل أو أرشف المشروعات المفتوحة المرتبطة به أولًا.', { icon: 'alerts' });
+      return;
+    }
+  }
+  if (!window.confirm(`هل تريد إرسال طلب حذف آمن لـ«${record.name}»؟ لن يُمحى سجل التدقيق أو التاريخ المرتبط.`)) return;
+  await requestOrApplyChange(entityType, entityId, 'DELETE', record, `حذف آمن لـ«${record.name}»`);
+}
 async function reviewApproval(requestId, decision) {
   if (!canReviewApprovals()) return;
   const request = state.approvals.find((item) => item.id === requestId);
@@ -1450,6 +1471,8 @@ document.addEventListener('click', async (event) => {
   if (action === 'status-project') openStatusDialog('project', entityId);
   if (action === 'archive-client') await archiveOrRestoreEntity('client', entityId, false);
   if (action === 'archive-project') await archiveOrRestoreEntity('project', entityId, false);
+  if (action === 'delete-client') await deleteEntity('client', entityId);
+  if (action === 'delete-project') await deleteEntity('project', entityId);
   if (action === 'restore-client') await archiveOrRestoreEntity('client', entityId, true);
   if (action === 'restore-project') await archiveOrRestoreEntity('project', entityId, true);
   if (action === 'approve-approval') await reviewApproval(entityId, 'APPROVED');

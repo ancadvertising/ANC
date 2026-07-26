@@ -77,7 +77,7 @@
       <div class="split-title">${UI.badge(task.Priority)}<small>${UI.date(task['Due Date'])}</small></div>
       <div class="table-actions">
         <button class="btn" data-task-progress="${esc(task['Task ID'])}">${isManagement() ? 'التقدم' : 'تحديث التقدم'}</button>
-        ${isManagement() ? `<button class="btn" data-task-edit="${esc(task['Task ID'])}">تعديل</button><button class="btn danger-button" data-task-archive="${esc(task['Task ID'])}">أرشفة</button>` : ''}
+        ${isManagement() ? `<button class="btn" data-task-edit="${esc(task['Task ID'])}">تعديل</button><button class="btn" data-task-archive="${esc(task['Task ID'])}">أرشفة</button><button class="btn danger-button" data-task-delete="${esc(task['Task ID'])}">حذف آمن</button>` : ''}
       </div>
     </article>`;
   }
@@ -115,6 +115,19 @@
         button.disabled = true;
         await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskArchive,action:'ARCHIVE',description:'طلب أرشفة مهمة من لوحة Kanban'});
         UI.toast('تم إرسال طلب الأرشفة للاعتماد.');
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
+    document.querySelectorAll('[data-task-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('سيتم إرسال طلب حذف آمن للمهمة إلى المدير الأساسي. سيظل سجل التدقيق محفوظًا. متابعة؟')) return;
+      try {
+        button.disabled = true;
+        await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskDelete,action:'DELETE',payload:{reason:'Safe delete requested from Kanban'},description:'طلب حذف آمن لمهمة من لوحة Kanban'});
+        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
