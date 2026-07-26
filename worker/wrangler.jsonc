@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../tools/cloudflare-cli/node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "anc-marketing-erp-api",
   "main": "src/index.js",
   "compatibility_date": "2026-07-22",
@@ -12,6 +12,7 @@
     }
   ],
   "vars": {
+    "ENVIRONMENT": "production",
     "ALLOWED_ORIGINS": "https://anc-marketing-erp.pages.dev",
     "API_PUBLIC_URL": "https://anc-marketing-erp-api.anc-advertising.workers.dev",
     "GOOGLE_CLIENT_ID": "158138229306-em772bvnc463dce5fni0to8jqe3npj3o.apps.googleusercontent.com",
@@ -21,7 +22,8 @@
     {
       "binding": "DB",
       "database_name": "anc-erp",
-      "database_id": "c82a6a34-7572-48d7-86cb-c581a6bfd48f"
+      "database_id": "c82a6a34-7572-48d7-86cb-c581a6bfd48f",
+      "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [
@@ -46,5 +48,44 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "env": {
+    "staging": {
+      "name": "anc-marketing-erp-api-staging",
+      "workers_dev": true,
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "ALLOWED_ORIGINS": "https://ancadvertising.github.io,http://localhost:4173,http://127.0.0.1:4173",
+        "API_PUBLIC_URL": "https://anc-marketing-erp-api-staging.anc-advertising.workers.dev",
+        "GOOGLE_CLIENT_ID": "158138229306-em772bvnc463dce5fni0to8jqe3npj3o.apps.googleusercontent.com",
+        "R2_PUBLIC_URL": ""
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "anc-erp-staging",
+          "database_id": "0061893b-220f-42e2-a48a-3227782be6ee",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "FILES",
+          "bucket_name": "anc-erp-files-staging"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "FINANCE_COORDINATOR",
+            "class_name": "FinanceCoordinator"
+          }
+        ]
+      },
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      }
+    }
   }
 }

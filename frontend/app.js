@@ -3,6 +3,20 @@ const LEGACY_STORAGE_KEY = 'anc-erp-staging-data-v1';
 const THEME_KEY = 'anc-erp-theme';
 const ROLE_KEY = 'anc-erp-preview-role';
 const CLIENT_PREVIEW_KEY = 'anc-erp-preview-client';
+const APP_BASE_PATH = (() => {
+  const configured = String(window.APP_CONFIG?.BASE_PATH || '/').trim();
+  const normalized = `/${configured.replace(/^\/+|\/+$/g, '')}/`;
+  return normalized === '//' ? '/' : normalized;
+})();
+
+function appPath(relativePath = '') {
+  const cleanPath = String(relativePath).replace(/^\/+/, '');
+  return `${APP_BASE_PATH}${cleanPath}`;
+}
+
+function routePath(route) {
+  return route === 'dashboard' ? APP_BASE_PATH : appPath(route);
+}
 
 const roleMetadata = Object.freeze({
   PRIMARY_MANAGER: { label: 'المدير الأساسي', note: 'صلاحية مباشرة واعتماد طلبات المدير المساعد.' },
@@ -336,14 +350,17 @@ function pendingForEntity(entityType, entityId) {
 }
 
 function routeFromLocation() {
-  const route = location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
+  const relativePath = APP_BASE_PATH !== '/' && location.pathname.startsWith(APP_BASE_PATH)
+    ? location.pathname.slice(APP_BASE_PATH.length)
+    : location.pathname.replace(/^\/+/, '');
+  const route = relativePath.split('/').filter(Boolean)[0] || 'dashboard';
   return pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
 }
 
 function navigate(route, options = {}) {
   const safeRoute = pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
-  if (!options.replace && safeRoute !== currentRoute) history.pushState({}, '', safeRoute === 'dashboard' ? '/' : `/${safeRoute}`);
-  if (options.replace) history.replaceState({}, '', safeRoute === 'dashboard' ? '/' : `/${safeRoute}`);
+  if (!options.replace && safeRoute !== currentRoute) history.pushState({}, '', routePath(safeRoute));
+  if (options.replace) history.replaceState({}, '', routePath(safeRoute));
   currentRoute = safeRoute;
   closeSidebar();
   closeMoreSheet();
@@ -354,7 +371,7 @@ function navigate(route, options = {}) {
 
 function navLink(item, extraClass = '') {
   const active = item.id === currentRoute;
-  return `<a class="nav-link ${extraClass} ${active ? 'is-active' : ''}" href="/${item.id}" data-route="${item.id}" ${active ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`;
+  return `<a class="nav-link ${extraClass} ${active ? 'is-active' : ''}" href="${routePath(item.id)}" data-route="${item.id}" ${active ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`;
 }
 
 function renderNavigation() {
@@ -380,7 +397,7 @@ function renderNavigation() {
     .filter(Boolean);
   const moreActive = !mobileItems.some((item) => item.id === currentRoute);
   document.querySelector('#mobile-navigation').innerHTML = `
-    ${mobileItems.map((item) => `<a class="mobile-nav-link ${item.id === currentRoute ? 'is-active' : ''}" href="/${item.id}" data-route="${item.id}" ${item.id === currentRoute ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`).join('')}
+    ${mobileItems.map((item) => `<a class="mobile-nav-link ${item.id === currentRoute ? 'is-active' : ''}" href="${routePath(item.id)}" data-route="${item.id}" ${item.id === currentRoute ? 'aria-current="page"' : ''}>${svg(item.id)}<span>${item.label}</span></a>`).join('')}
     <button class="mobile-nav-link ${moreActive ? 'is-active' : ''}" type="button" data-action="open-more">${svg('more')}<span>المزيد</span></button>
   `;
 
@@ -434,7 +451,7 @@ function renderLiveModule(moduleName) {
 function renderPage() {
   if (!isRouteAllowed(currentRoute)) {
     currentRoute = 'dashboard';
-    history.replaceState({}, '', '/');
+    history.replaceState({}, '', routePath('dashboard'));
   }
   setHeader();
   renderNavigation();
@@ -1316,7 +1333,7 @@ async function installApp() {
 
 function registerServiceWorker() {
   if (!navigator.serviceWorker?.register || location.protocol === 'file:') return;
-  navigator.serviceWorker.register('/service-worker.js').then((registration) => {
+  navigator.serviceWorker.register(appPath('service-worker.js'), { scope: APP_BASE_PATH }).then((registration) => {
     registration.addEventListener('updatefound', () => {
       const worker = registration.installing;
       worker?.addEventListener('statechange', () => {
@@ -1512,7 +1529,7 @@ async function bootstrapProduction() {
 
 document.querySelector('#logout-button').addEventListener('click', async () => {
   await ANCAuth.logout();
-  location.replace('/');
+  location.replace(APP_BASE_PATH);
 });
 
 document.querySelector('#auth-retry-button').addEventListener('click', async () => {
