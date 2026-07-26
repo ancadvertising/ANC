@@ -57,7 +57,7 @@
         "ENVIRONMENT": "staging",
         "ALLOWED_ORIGINS": "https://ancadvertising.github.io,http://localhost:4173,http://127.0.0.1:4173",
         "API_PUBLIC_URL": "https://anc-marketing-erp-api-staging.anc-advertising.workers.dev",
-        "GOOGLE_CLIENT_ID": "158138229306-em772bvnc463dce5fni0to8jqe3npj3o.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_ID": "158138229306-v472sq3esv0hsleje5q07idcafl4v7q0.apps.googleusercontent.com",
         "R2_PUBLIC_URL": ""
       },
       "d1_databases": [

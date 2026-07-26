@@ -7,7 +7,7 @@ const sourceDir = path.join(repoRoot, 'frontend');
 const outputDir = path.join(repoRoot, 'dist', 'staging-frontend');
 const basePath = '/ANC/';
 const apiUrl = 'https://anc-marketing-erp-api-staging.anc-advertising.workers.dev';
-const googleClientId = '158138229306-em772bvnc463dce5fni0to8jqe3npj3o.apps.googleusercontent.com';
+const googleClientId = '158138229306-v472sq3esv0hsleje5q07idcafl4v7q0.apps.googleusercontent.com';
 
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(path.dirname(outputDir), { recursive: true });
