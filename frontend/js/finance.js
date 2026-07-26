@@ -132,9 +132,9 @@
       API.get('clients'),
       API.get('projects')
     ]);
-    const invoices = results[0].invoices || [];
-    const payments = results[1].payments || [];
-    const expenses = results[2].expenses || [];
+    const invoices = UI.filterRows(results[0].invoices || [], ['Issue Date', 'Due Date', 'Created At', 'Updated At']);
+    const payments = UI.filterRows(results[1].payments || [], ['Payment Date', 'Created At']);
+    const expenses = UI.filterRows(results[2].expenses || [], ['Expense Date', 'Created At']);
     const accounts = results[3].accounts || [];
     const clients = results[4].clients || [];
     const projects = results[5].projects || [];

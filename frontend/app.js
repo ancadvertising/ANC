@@ -453,6 +453,7 @@ function renderPage() {
     currentRoute = 'dashboard';
     history.replaceState({}, '', routePath('dashboard'));
   }
+  window.UI?.mountDateFilter?.(currentRole, () => renderPage());
   setHeader();
   renderNavigation();
   updateRoleInterface();
@@ -479,10 +480,13 @@ function renderDashboard() {
   if (currentRole === 'CLIENT') return renderClientDashboard();
   if (currentRole === 'EMPLOYEE') return renderEmployeeDashboard();
 
-  const activeClients = state.clients.filter((client) => client.status === 'ACTIVE' && !client.archived).length;
-  const activeProjects = state.projects.filter((project) => project.status === 'ACTIVE' && !project.archived).length;
-  const pendingApprovals = state.approvals.filter((request) => request.status === 'PENDING').length;
-  const totalBudget = state.projects.filter((project) => !project.archived).reduce((sum, project) => sum + Number(project.budget || 0), 0);
+  const visibleClients = UI.filterRows(state.clients, ['createdAt', 'updatedAt']);
+  const visibleProjects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']);
+  const visibleApprovals = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']);
+  const activeClients = visibleClients.filter((client) => client.status === 'ACTIVE' && !client.archived).length;
+  const activeProjects = visibleProjects.filter((project) => project.status === 'ACTIVE' && !project.archived).length;
+  const pendingApprovals = visibleApprovals.filter((request) => request.status === 'PENDING').length;
+  const totalBudget = visibleProjects.filter((project) => !project.archived).reduce((sum, project) => sum + Number(project.budget || 0), 0);
   const metrics = [
     ['clients', 'العملاء النشطون', activeClients, state.clients.length ? `من إجمالي ${state.clients.length} عميل` : 'ابدأ بإضافة أول عميل'],
     ['projects', 'المشروعات النشطة', activeProjects, state.projects.length ? `من إجمالي ${state.projects.length} مشروع` : 'لم تُسجل مشروعات بعد'],
@@ -570,7 +574,7 @@ function renderClientDashboard() {
   if (!client) {
     return emptyState('clients', 'لا يوجد حساب عميل للمعاينة', 'ارجع إلى دور المدير الأساسي وأضف عميلًا أولًا، ثم اختر واجهة العميل.', 'العودة للإدارة', 'role-primary');
   }
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   const activeProjects = projects.filter((project) => project.status === 'ACTIVE').length;
   return `
     <section class="portal-hero">
@@ -601,7 +605,7 @@ function renderClientDashboard() {
 function renderClientProjects() {
   const client = selectedPreviewClient();
   if (!client) return renderClientDashboard();
-  const projects = state.projects.filter((project) => project.clientId === client.id && !project.archived);
+  const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   return `
     <div class="page-toolbar">
       <div class="toolbar-copy"><h2>مشروعات ${escapeHtml(client.name)}</h2><p>واجهة قراءة مخصصة للعميل ولا تعرض بيانات مالية داخلية.</p></div>
@@ -646,7 +650,7 @@ function renderClientModule(route) {
 }
 
 function employeeVisibleProjects() {
-  return state.projects.filter((project) => !project.archived && !['CANCELLED', 'COMPLETED'].includes(project.status));
+  return UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => !project.archived && !['CANCELLED', 'COMPLETED'].includes(project.status));
 }
 
 function renderEmployeeDashboard() {
@@ -708,7 +712,7 @@ function employeeTaskCard(project) {
 }
 
 function renderApprovals() {
-  const items = [...state.approvals].reverse();
+  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']).reverse();
   const pending = items.filter((request) => request.status === 'PENDING').length;
   return `
     ${rolePreviewBanner()}
@@ -761,7 +765,7 @@ function formatDateTime(value) {
   if (!value) return 'غير محدد';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return escapeHtml(value);
-  return new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
 function renderClients() {
@@ -831,11 +835,13 @@ function projectCard(project) {
 }
 
 function entityActions(entityType, entity) {
-  if (!canManageRecords()) return '';
+  const viewButton = `<button class="ghost-button" type="button" data-action="view-entity" data-entity-type="${entityType}" data-id="${escapeHtml(entity.id)}">عرض التفاصيل</button>`;
+  if (!canManageRecords()) return `<div class="entity-actions">${viewButton}</div>`;
   const pending = pendingForEntity(entityType, entity.id);
   const suffix = currentRole === 'ASSISTANT_MANAGER' ? ' (طلب اعتماد)' : '';
   return `
     <div class="entity-actions">
+      ${viewButton}
       <button class="ghost-button" type="button" data-action="edit-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تعديل${suffix}</button>
       <button class="ghost-button" type="button" data-action="status-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending || entity.archived ? 'disabled' : ''}>تغيير الحالة${suffix}</button>
       <button class="ghost-button ${entity.archived ? '' : 'danger-button'}" type="button" data-action="${entity.archived ? 'restore' : 'archive'}-${entityType}" data-id="${escapeHtml(entity.id)}" ${pending ? 'disabled' : ''}>${entity.archived ? 'استعادة' : 'أرشفة'}${suffix}</button>
@@ -886,14 +892,15 @@ function projectFilter() {
 
 function filteredClients() {
   const query = searchValue().trim().toLowerCase();
-  if (!query) return [...state.clients].reverse();
-  return [...state.clients].reverse().filter((client) => [client.name, client.primaryContact, client.email, client.phone].some((value) => String(value || '').toLowerCase().includes(query)));
+  const dated = UI.filterRows(state.clients, ['createdAt', 'updatedAt']).reverse();
+  if (!query) return dated;
+  return dated.filter((client) => [client.name, client.primaryContact, client.email, client.phone].some((value) => String(value || '').toLowerCase().includes(query)));
 }
 
 function filteredProjects() {
   const query = searchValue().trim().toLowerCase();
   const filter = projectFilter();
-  return [...state.projects].reverse().filter((project) => {
+  return UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).reverse().filter((project) => {
     const client = state.clients.find((item) => item.id === project.clientId);
     const queryMatches = !query || [project.name, project.accountManager, client?.name].some((value) => String(value || '').toLowerCase().includes(query));
     const statusMatches = filter === 'ALL' || recordStatus(project) === filter;
@@ -918,14 +925,14 @@ function priorityLabel(priority) {
 }
 
 function money(value, currency = 'EGP') {
-  return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: currency || 'EGP', maximumFractionDigits: 0 }).format(Number(value || 0));
+  return new Intl.NumberFormat('ar-EG-u-nu-latn', { style: 'currency', currency: currency || 'EGP', maximumFractionDigits: 0 }).format(Number(value || 0));
 }
 
 function formatDate(value) {
   if (!value) return 'غير محدد';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return escapeHtml(value);
-  return new Intl.DateTimeFormat('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat('ar-EG-u-nu-latn', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
 }
 
 function findEntity(entityType, entityId) {
@@ -1364,6 +1371,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'go-approvals') navigate('approvals');
   if (action === 'go-dashboard') navigate('dashboard');
 
+  if (action === 'view-entity') {
+    const entityType = actionTarget.dataset.entityType || 'project';
+    const entity = findEntity(entityType, entityId);
+    if (entity) UI.openDetails(entity, [], entity.name || 'تفاصيل السجل');
+  }
   if (action === 'edit-client') openEntityDialog('client', entityId);
   if (action === 'edit-project') openEntityDialog('project', entityId);
   if (action === 'status-client') openStatusDialog('client', entityId);

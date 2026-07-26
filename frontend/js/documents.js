@@ -66,7 +66,7 @@
       API.get('clients').catch(() => ({clients:[]})),
       API.get('projects').catch(() => ({projects:[]}))
     ]);
-    const documents = documentData.documents || [];
+    const documents = UI.filterRows(documentData.documents || [], ['Created At', 'Updated At', 'Archived At']);
     const clients = clientData.clients || [];
     const projects = projectData.projects || [];
     const role = String(currentUser.role || '').toUpperCase();

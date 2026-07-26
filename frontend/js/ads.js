@@ -143,7 +143,7 @@
       API.get('projects').catch(() => ({ projects:[] })),
       API.get('bank.accounts').catch(() => ({ accounts:[] }))
     ]);
-    const ads = results[0].ads || [];
+    const ads = UI.filterRows(results[0].ads || [], ['Created At', 'Updated At']);
     adSettings = results[1].settings || {};
     const context = {
       clients: results[2].clients || [],
