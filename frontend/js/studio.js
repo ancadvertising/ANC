@@ -1,7 +1,7 @@
 (() => {
   const esc = UI.escape;
   const truthy = value => value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
-  const JOB_TYPE_OPTIONS = Object.freeze([
+  const DEFAULT_JOB_TYPE_OPTIONS = Object.freeze([
     { value: 'PHOTOGRAPHY', label: 'Photography' },
     { value: 'VIDEOGRAPHY', label: 'Videography' },
     { value: 'EDITING', label: 'Editing' },
@@ -9,11 +9,37 @@
     { value: 'DELIVERY', label: 'Delivery' },
     { value: 'EQUIPMENT_RENTAL', label: 'Equipment Rental' }
   ]);
+  let JOB_TYPE_OPTIONS = [...DEFAULT_JOB_TYPE_OPTIONS];
+  let ALL_JOB_TYPES = [];
 
   function isManagement() {
     const user = window.ANC_CURRENT_USER || {};
     const role = String(user.role || '').toUpperCase();
     return user.userType === 'ADMIN' || ['ADMIN', 'MANAGER', 'ASSISTANT_MANAGER'].includes(role);
+  }
+
+  function isPrimaryManager() {
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    return user.userType === 'ADMIN' || ['ADMIN', 'MANAGER'].includes(role);
+  }
+
+  function localizedTypeName(type) {
+    return document.documentElement.lang === 'en' ? type['Name En'] : type['Name Ar'];
+  }
+
+  function setJobTypes(rows) {
+    ALL_JOB_TYPES = Array.isArray(rows) ? rows : [];
+    const active = ALL_JOB_TYPES.filter(type => truthy(type.Active)).map(type => ({
+      value: type['Job Type Code'],
+      label: localizedTypeName(type) || type['Name En'] || type['Job Type Code']
+    }));
+    JOB_TYPE_OPTIONS = active.length ? active : [...DEFAULT_JOB_TYPE_OPTIONS];
+  }
+
+  function typeLabel(value) {
+    const row = ALL_JOB_TYPES.find(type => type['Job Type Code'] === value);
+    return row ? localizedTypeName(row) : JOB_TYPE_OPTIONS.find(type => type.value === value)?.label || value;
   }
 
   function option(value, label, selected, attributes = '') {
@@ -46,7 +72,7 @@
     return `<form class="form-grid studio-job-form">
       ${management ? `<div class="field"><label>العميل</label><select name="clientId" required>${clientOptions}</select></div>
       <div class="field"><label>المشروع</label><select name="projectId">${projectOptions}</select></div>
-      <div class="field"><label>نوع العمل</label><select name="jobType">${JOB_TYPE_OPTIONS.map(type => option(type.value,type.label,type.value === (job['Job Type'] || 'DESIGN'))).join('')}</select></div>
+      <div class="field"><label>نوع العمل</label><select name="jobType">${(() => { const current = job['Job Type'] || 'DESIGN'; const options = JOB_TYPE_OPTIONS.some(type => type.value === current) ? JOB_TYPE_OPTIONS : [...JOB_TYPE_OPTIONS,{value:current,label:typeLabel(current)}]; return options.map(type => option(type.value,type.label,type.value === current)).join(''); })()}</select></div>
       <div class="field"><label>موعد التسليم</label><input name="dueDate" type="date" value="${esc(String(job['Due Date'] || '').slice(0,10))}"></div>
       <div class="field wide"><label>العنوان</label><input name="title" required value="${esc(job.Title || '')}"></div>` : ''}
       <div class="field"><label>الحالة</label><select name="status">${statuses.map(status => option(status,status,status === (job.Status || 'TODO'))).join('')}</select></div>
@@ -118,6 +144,49 @@
     });
   }
 
+  function typeForm(type) {
+    type = type || {};
+    const editing = Boolean(type['Job Type Code']);
+    return `<form class="form-grid studio-type-form">
+      <div class="field"><label>الكود الإنجليزي</label><input name="jobTypeCode" ${editing ? 'readonly' : ''} required pattern="[A-Za-z][A-Za-z0-9_ -]{1,49}" placeholder="مثال: VOICE_OVER" value="${esc(type['Job Type Code'] || '')}"><small>لا يمكن تغيير الكود بعد إنشاء النوع.</small></div>
+      <div class="field"><label>الترتيب</label><input name="sortOrder" type="number" min="0" max="9999" value="${esc(type['Sort Order'] ?? 100)}"></div>
+      <div class="field"><label>الاسم بالعربية</label><input name="nameAr" required maxlength="120" value="${esc(type['Name Ar'] || '')}"></div>
+      <div class="field"><label>الاسم بالإنجليزية</label><input name="nameEn" required maxlength="120" value="${esc(type['Name En'] || '')}"></div>
+      <div class="field wide"><label class="check-row"><input name="active" type="checkbox"${editing ? (truthy(type.Active) ? ' checked' : '') : ' checked'}> النوع نشط ومتاح في الأعمال الجديدة</label></div>
+      <div class="wide actions"><button class="btn btn-primary" type="submit">${editing ? 'حفظ التعديلات' : 'إضافة نوع العمل'}</button></div>
+    </form>`;
+  }
+
+  function typeManagementSection(types) {
+    if (!isPrimaryManager()) return '';
+    return `<section class="card studio-type-management"><div class="card-header"><div><h2>أنواع أعمال الاستوديو والإنتاج</h2><p class="muted">أضف أنواعًا جديدة أو عدّل الأسماء والترتيب. تعطيل النوع يمنعه من الأعمال الجديدة ولا يؤثر في السجلات السابقة.</p></div><button class="btn btn-primary" id="new-job-type">إضافة نوع عمل</button></div>
+      ${UI.table(types,[
+        {key:'Job Type Code',label:'الكود'},
+        {key:'Name Ar',label:'الاسم بالعربية'},
+        {key:'Name En',label:'الاسم بالإنجليزية'},
+        {key:'Sort Order',label:'الترتيب',render:UI.number},
+        {key:'Active',label:'الحالة',render:value => UI.badge(truthy(value) ? 'ACTIVE' : 'INACTIVE')},
+        {key:'Job Type Code',label:'الإجراءات',render:(value,row) => `<div class="table-actions"><button class="btn" data-type-edit="${esc(value)}">تعديل</button><button class="btn" data-type-toggle="${esc(value)}" data-next-active="${truthy(row.Active) ? 'false' : 'true'}">${truthy(row.Active) ? 'تعطيل' : 'تفعيل'}</button></div>`}
+      ],{detailTitle:'تفاصيل نوع العمل'})}
+    </section>`;
+  }
+
+  async function openTypeEditor(type, reload) {
+    const modal = UI.modal(type ? 'تعديل نوع العمل' : 'إضافة نوع عمل جديد', typeForm(type));
+    const form = modal.querySelector('form');
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      UI.submit(form, async values => {
+        values.active = form.elements.active.checked;
+        if (type) await API.put('studio.jobTypes', values);
+        else await API.post('studio.jobTypes', values);
+        UI.toast(type ? 'تم تحديث نوع العمل.' : 'تمت إضافة نوع العمل.');
+        modal.remove();
+        await reload();
+      });
+    });
+  }
+
   function actions(_, row) {
     return `<div class="table-actions">
       <button class="btn" data-job-edit="${esc(row['Studio Job ID'])}">${isManagement() ? 'تعديل' : 'تحديث التقدم'}</button>
@@ -126,13 +195,15 @@
   }
 
   async function load() {
-    const [studioResult, clientResult, projectResult] = await Promise.all([
+    const [studioResult, typeResult, clientResult, projectResult] = await Promise.all([
       API.get('studio.jobs'),
+      API.get('studio.jobTypes', { includeInactive: isPrimaryManager() }).catch(() => ({ jobTypes: [] })),
       isManagement() ? API.get('clients').catch(() => ({ clients: [] })) : Promise.resolve({ clients: [] }),
       isManagement() ? API.get('projects').catch(() => ({ projects: [] })) : Promise.resolve({ projects: [] })
     ]);
+    setJobTypes(typeResult.jobTypes || []);
     const jobs = UI.filterRows(studioResult.jobs || [], ['Created At', 'Updated At', 'Due Date']);
-    const context = { employees: studioResult.employees || [], clients: clientResult.clients || [], projects: projectResult.projects || [] };
+    const context = { employees: studioResult.employees || [], clients: clientResult.clients || [], projects: projectResult.projects || [], jobTypes: typeResult.jobTypes || [] };
     const totalSale = jobs.reduce((sum,row) => sum + Number(row['Sale Price'] || 0),0);
     const totalCost = jobs.reduce((sum,row) => sum + Number(row['Direct Cost'] || 0),0);
     UI.setMain(`<section class="grid metrics">
@@ -141,10 +212,11 @@
       ${UI.metric('تم التسليم', UI.number(jobs.filter(row => row.Status === 'DONE').length))}
       ${isManagement() ? UI.metric('هامش الاستوديو', UI.money(totalSale - totalCost), `${UI.money(totalSale)} مبيعات`) : UI.metric('إجمالي الأعمال', UI.number(jobs.length))}
     </section>
+    ${typeManagementSection(context.jobTypes)}
     <section class="card"><div class="card-header"><div><h2>أعمال الاستوديو</h2><p class="muted">إسناد متعدد للموظفين، تتبع الساعات والتكلفة، وربط البنود القابلة للفوترة بالمشروع.</p></div>${isManagement() && context.clients.length ? '<button class="btn btn-primary" id="new-job">عمل جديد</button>' : ''}</div>
       ${UI.table(jobs, [
         {key:'Title',label:'العمل'},
-        {key:'Job Type',label:'النوع',render:value => UI.badge(JOB_TYPE_OPTIONS.find(type => type.value === value)?.label || value)},
+        {key:'Job Type',label:'النوع',render:value => UI.badge(typeLabel(value))},
         {key:'Assigned To',label:'المسؤول'},
         {key:'Due Date',label:'التسليم',render:UI.date},
         {key:'Status',label:'الحالة',render:UI.badge},
@@ -155,6 +227,25 @@
     </section>`);
 
     const reload = () => load();
+    document.querySelector('#new-job-type')?.addEventListener('click', () => openTypeEditor(null, reload));
+    document.querySelectorAll('[data-type-edit]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      openTypeEditor(context.jobTypes.find(type => type['Job Type Code'] === button.dataset.typeEdit), reload);
+    }));
+    document.querySelectorAll('[data-type-toggle]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
+      const active = button.dataset.nextActive === 'true';
+      if (!window.confirm(active ? 'هل تريد تفعيل نوع العمل؟' : 'هل تريد تعطيل النوع للأعمال الجديدة؟')) return;
+      try {
+        button.disabled = true;
+        await API.put('studio.jobTypes', { jobTypeCode: button.dataset.typeToggle, active });
+        UI.toast(active ? 'تم تفعيل نوع العمل.' : 'تم تعطيل نوع العمل.');
+        await reload();
+      } catch (error) {
+        button.disabled = false;
+        UI.toast(error.message, 'error');
+      }
+    }));
     document.querySelector('#new-job')?.addEventListener('click', () => openEditor(null, context, reload));
     document.querySelectorAll('[data-job-edit]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
@@ -162,11 +253,12 @@
     }));
     document.querySelectorAll('[data-job-archive]').forEach(button => button.addEventListener('click', async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب أرشفة إلى المدير الأساسي. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobArchive, action:'ARCHIVE', description:'طلب أرشفة عمل استوديو من القائمة' });
-        UI.toast('تم إرسال طلب الأرشفة للاعتماد.');
+        const result = await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobArchive, action:'ARCHIVE', description:'طلب أرشفة عمل استوديو من القائمة' });
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
@@ -175,11 +267,12 @@
     }));
     document.querySelectorAll('[data-job-delete]').forEach(button => button.addEventListener('click', async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب حذف آمن لعمل الاستوديو إلى المدير الأساسي. سيظل سجل التدقيق محفوظًا. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobDelete, action:'DELETE', payload:{reason:'Safe delete requested from studio list'}, description:'طلب حذف آمن لعمل استوديو من القائمة' });
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({ entityType:'STUDIO_JOB', entityId:button.dataset.jobDelete, action:'DELETE', payload:{reason:'Safe delete requested from studio list'}, description:'طلب حذف آمن لعمل استوديو من القائمة' });
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {

@@ -33,7 +33,7 @@ test('advanced notes persist author identity, labels and audit events', async ()
   assert.match(migration, /CREATE TABLE note_label_links/);
 });
 
-test('safe delete is visible across managed records and always requests approval', async () => {
+test('safe delete is visible and only assistant-manager changes require approval', async () => {
   const [app, api, users, ads, tasks, studio, documents, finance, worker] = await Promise.all([
     read('frontend/app.js'),
     read('frontend/api-client.js'),
@@ -97,6 +97,27 @@ test('primary manager can permanently delete popup notifications and their recei
   assert.match(worker, /POPUP_NOTIFICATION_DELETED/);
   assert.match(settings, /data-notification-delete/);
   assert.match(settings, /API\.delete\('notifications', \{ notificationId \}\)/);
+});
+test('primary manager changes apply directly while completed approvals can be archived newest first', async () => {
+  const [worker, app, api, ui, migration] = await Promise.all([
+    read('worker/src/index.js'),
+    read('frontend/app.js'),
+    read('frontend/api-client.js'),
+    read('frontend/js/ui.js'),
+    read('worker/migrations/0006_approval_archiving.sql')
+  ]);
+
+  assert.match(api, /const requiresApproval = !isPrimaryManager && role === 'ASSISTANT_MANAGER'/);
+  assert.match(ui, /isPrimaryManager \? 'approvals\.apply' : 'approvals'/);
+  assert.match(worker, /if \(primaryManager\(actor\)\) return applyPrimaryChange/);
+  assert.match(worker, /async function applyPrimaryChange/);
+  assert.match(worker, /async function archiveApprovalRequest/);
+  assert.match(worker, /ORDER BY created_at DESC LIMIT/);
+  assert.match(worker, /"POST approvals\.archive"/);
+  assert.match(app, /data-action="archive-approval"/);
+  assert.match(app, /const items = UI\.filterRows\(state\.approvals/);
+  assert.doesNotMatch(app, /const items = UI\.filterRows\(state\.approvals[^;]+\.reverse\(\)/);
+  assert.match(migration, /ADD COLUMN archived/);
 });
 test('money formatter accepts a table row without treating it as a currency code', async () => {
   const ui = await read('frontend/js/ui.js');

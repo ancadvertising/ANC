@@ -349,8 +349,11 @@ window.UI = (() => {
     if (entityType && typeof entityType === 'object') {
       ({ entityType, entityId, action, payload, description } = entityType);
     }
-    const result = await API.post('approvals', { entityType, entityId, action, payload: payload || {}, description });
-    toast('تم إرسال طلب الاعتماد إلى المدير الأساسي.');
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    const isPrimaryManager = user.userType === 'ADMIN' || ['ADMIN','MANAGER'].includes(role);
+    const route = isPrimaryManager ? 'approvals.apply' : 'approvals';
+    const result = await API.post(route, { entityType, entityId, action, payload: payload || {}, description });
     return result;
   }
 

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'anc-erp-shell-v4.0.4';
+const CACHE_VERSION = 'anc-erp-shell-v4.0.5';
 const scopedPath = (path = '') => new URL(String(path).replace(/^\/+/, ''), self.registration.scope).pathname;
 const APP_SHELL = [
   '',

@@ -110,11 +110,12 @@
     }));
     document.querySelectorAll('[data-task-archive]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب أرشفة المهمة إلى المدير الأساسي. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskArchive,action:'ARCHIVE',description:'طلب أرشفة مهمة من لوحة Kanban'});
-        UI.toast('تم إرسال طلب الأرشفة للاعتماد.');
+        const result = await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskArchive,action:'ARCHIVE',description:'طلب أرشفة مهمة من لوحة Kanban'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
@@ -123,11 +124,12 @@
     }));
     document.querySelectorAll('[data-task-delete]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب حذف آمن للمهمة إلى المدير الأساسي. سيظل سجل التدقيق محفوظًا. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskDelete,action:'DELETE',payload:{reason:'Safe delete requested from Kanban'},description:'طلب حذف آمن لمهمة من لوحة Kanban'});
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({entityType:'TASK',entityId:button.dataset.taskDelete,action:'DELETE',payload:{reason:'Safe delete requested from Kanban'},description:'طلب حذف آمن لمهمة من لوحة Kanban'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
