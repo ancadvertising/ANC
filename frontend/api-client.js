@@ -131,9 +131,9 @@ function approvalDescriptor(route, method, data) {
 async function governedRequest(route, method = 'GET', data = {}, options = {}) {
   const user = window.ANC_CURRENT_USER;
   const role = String(user?.role || '').toUpperCase();
-  const isPrimaryManager = user?.userType === 'ADMIN' || ['ADMIN','MANAGER'].includes(role);
-  const requiresApproval = !isPrimaryManager && role === 'ASSISTANT_MANAGER';
-  const descriptor = requiresApproval ? approvalDescriptor(route, method, data) : null;
+  const previewRole = localStorage.getItem('anc-erp-preview-role') || '';
+  const isAssistant = role === 'ASSISTANT_MANAGER' || previewRole === 'ASSISTANT_MANAGER';
+  const descriptor = isAssistant ? approvalDescriptor(route, method, data) : null;
   if (descriptor?.entityId) {
     return ANCAuth.request('approvals','POST',{
       ...descriptor,
