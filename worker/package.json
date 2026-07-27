@@ -1,19 +1,21 @@
 {
-  "name": "anc-erp",
-  "version": "1.0.0",
-  "description": "ANC Marketing Agency ERP System",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "node server.js",
-    "start": "node server.js",
-    "build": "echo 'No build step required'",
-    "lint": "node --check server.js"
-  },
-  "dependencies": {
-    "@pdf-lib/fontkit": "^1.1.1",
-    "express": "^4.19.2",
-    "pdf-lib": "^1.17.1",
-    "sql.js": "^1.14.1"
-  }
+    "name":  "worker",
+    "version":  "1.0.0",
+    "description":  "ANC Marketing Agency ERP Cloudflare Worker",
+    "type":  "module",
+    "private":  true,
+    "scripts":  {
+                    "test":  "node --test tests/*.test.mjs",
+                    "check:staging":  "wrangler deploy --env staging --dry-run --outdir tmp/staging-dry-run",
+                    "dev:staging":  "wrangler dev --env staging --local",
+                    "deploy:staging":  "wrangler deploy --env staging"
+                },
+    "license":  "UNLICENSED",
+    "dependencies":  {
+                         "@pdf-lib/fontkit":  "1.1.1",
+                         "pdf-lib":  "1.17.1"
+                     },
+    "devDependencies":  {
+                         "wrangler":  "4.114.0"
+                     }
 }
