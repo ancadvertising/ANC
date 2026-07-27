@@ -326,9 +326,7 @@ function normalizeApproval(row) {
     reviewedBy: String(row?.reviewedBy || row?.['Reviewed By Email'] || ''),
     reviewNote: String(row?.reviewNote || row?.['Review Note'] || ''),
     createdAt: row?.createdAt || row?.['Created At'] || '',
-    reviewedAt: row?.reviewedAt || row?.['Reviewed At'] || '',
-    archived: Boolean(row?.archived || row?.Archived),
-    archivedAt: row?.archivedAt || row?.['Archived At'] || ''
+    reviewedAt: row?.reviewedAt || row?.['Reviewed At'] || ''
   };
 }
 async function loadProductionState() {
@@ -338,8 +336,12 @@ async function loadProductionState() {
   employeePortal = null;
 
   if (currentRole === 'CLIENT') {
-    portalData = await ANCAuth.request('client.portal', 'GET', {});
-    state.clients = portalData?.client ? [normalizeClient(portalData.client)] : [];
+    const previewClient = selectedPreviewClient();
+    const query = previewClient?.id ? { clientId: previewClient.id } : {};
+    portalData = await ANCAuth.request('client.portal', 'GET', query).catch(() => null);
+    if (portalData?.client) {
+      state.clients = [normalizeClient(portalData.client)];
+    }
     state.projects = (portalData?.projects || []).map(normalizeProject);
     return;
   }
@@ -360,6 +362,11 @@ async function loadProductionState() {
   state.projects = (projectsResult?.projects || projectsResult || []).map(normalizeProject);
   state.approvals = (approvalsResult?.approvals || []).map(normalizeApproval);
   serverDashboard = dashboardResult;
+
+  const activeClient = selectedPreviewClient();
+  if (activeClient?.id) {
+    portalData = await ANCAuth.request('client.portal', 'GET', { clientId: activeClient.id }).catch(() => null);
+  }
 }
 
 function allowedRoutes() {
@@ -391,7 +398,15 @@ function canReviewApprovals() {
 }
 
 function selectedPreviewClient() {
-  if (!state.clients.length) return null;
+  if (currentUser?.userType === 'CLIENT' && currentUser?.clientId) {
+    return state.clients.find((c) => c.id === currentUser.clientId) || (portalData?.client ? normalizeClient(portalData.client) : { id: currentUser.clientId, name: currentUser.name || currentUser.fullName || 'العميل' });
+  }
+  const savedId = localStorage.getItem(CLIENT_PREVIEW_KEY);
+  if (savedId) {
+    const found = state.clients.find((c) => c.id === savedId && !c.archived);
+    if (found) return found;
+  }
+  if (portalData?.client) return normalizeClient(portalData.client);
   return state.clients.find((client) => !client.archived) || null;
 }
 
@@ -636,7 +651,12 @@ function rolePreviewBanner() {
 }
 
 function clientPreviewSelector(client) {
-  return `<span class="portal-selector"><span>الحساب المسجل</span><strong>${escapeHtml(client?.name || '')}</strong></span>`;
+  const activeClients = state.clients.filter((c) => !c.archived);
+  if (activeClients.length <= 1) {
+    return `<span class="portal-selector"><span>الحساب المسجل</span><strong>${escapeHtml(client?.name || 'العميل')}</strong></span>`;
+  }
+  const options = activeClients.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === client?.id ? ' selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+  return `<div class="portal-selector"><span>اختر العميل للمعاينة</span><select data-action="change-preview-client">${options}</select></div>`;
 }
 
 function renderClientDashboard() {
@@ -646,12 +666,26 @@ function renderClientDashboard() {
   }
   const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   const activeProjects = projects.filter((project) => project.status === 'ACTIVE').length;
+
+  const invoices = portalData?.invoices || [];
+  const payments = portalData?.payments || [];
+  const ads = portalData?.ads || [];
+  const studioJobs = portalData?.studioJobs || [];
+  const requests = portalData?.requests || [];
+  const ordersCount = ads.length + studioJobs.length + requests.length;
+
+  const outstandingBalance = portalData?.statement?.outstandingBalance !== undefined
+    ? Number(portalData.statement.outstandingBalance)
+    : invoices.reduce((sum, inv) => sum + Number(inv.balanceDue ?? ((Number(inv.amount || 0) + Number(inv.taxAmount || 0)) - Number(inv.paidAmount || 0))), 0);
+
+  const balanceNote = outstandingBalance > 0 ? 'مستحق الدفع قيد التسديد' : 'الحساب مسدد بالكامل';
+
   return `
     <section class="portal-hero">
       <div>
         <span class="hero-kicker">${svg('clients')} بوابة العميل الآمنة</span>
         <h2>مرحبًا، ${escapeHtml(client.name)}</h2>
-        <p>هنا يرى العميل مشروعاته وطلباته وفواتيره ومدفوعاته فقط، دون أي تكلفة داخلية أو أرباح أو بيانات عملاء آخرين.</p>
+        <p>هنا تتابع مشروعاتك، طلبات الخدمات، الإعلانات الممولة، الفواتير المستحقة، والمدفوعات بكل شفافية.</p>
       </div>
       ${clientPreviewSelector(client)}
     </section>
@@ -659,16 +693,65 @@ function renderClientDashboard() {
       ${[
         ['projects', 'إجمالي المشروعات', projects.length, 'كل المشروعات المرتبطة بهذا الحساب'],
         ['projects', 'المشروعات النشطة', activeProjects, 'قيد التنفيذ حاليًا'],
-        ['orders', 'الطلبات المفتوحة', 0, 'ستظهر بعد توصيل دورة الطلبات'],
-        ['finance', 'الرصيد المستحق', money(0), 'يُحتسب من الفواتير والمدفوعات فقط']
+        ['orders', 'الطلبات والخدمات', ordersCount, `${ads.length} إعلانات · ${studioJobs.length} استوديو`],
+        ['finance', 'الرصيد المستحق', money(outstandingBalance), balanceNote]
       ].map(([icon, label, value, note]) => `<article class="metric-card"><span class="metric-icon">${svg(icon)}</span><div><span class="metric-label">${label}</span><strong class="metric-value">${value}</strong><small class="metric-note">${note}</small></div></article>`).join('')}
     </section>
-    <article class="panel">
-      <header class="panel-header"><div><h2>مشروعاتي</h2><p>لا تظهر هنا الميزانيات الداخلية أو هامش الربح.</p></div><button class="soft-button" type="button" data-route="projects">عرض الكل</button></header>
-      <div class="panel-body">
-        ${projects.length ? `<section class="entity-grid portal-grid">${projects.slice(0, 6).map(clientProjectCard).join('')}</section>` : '<p class="portal-empty-copy">لا توجد مشروعات مرتبطة بهذا الحساب حتى الآن.</p>'}
-      </div>
-    </article>
+
+    <div class="content-grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin-top: 1rem;">
+      <article class="panel">
+        <header class="panel-header"><div><h2>مشروعاتي</h2><p>تتبع حالة التقدم ومواعيد التسليم.</p></div><button class="soft-button" type="button" data-route="projects">عرض الكل</button></header>
+        <div class="panel-body">
+          ${projects.length ? `<section class="entity-grid portal-grid">${projects.slice(0, 4).map(clientProjectCard).join('')}</section>` : '<p class="portal-empty-copy">لا توجد مشروعات مرتبطة بهذا الحساب حتى الآن.</p>'}
+        </div>
+      </article>
+
+      <article class="panel">
+        <header class="panel-header"><div><h2>ملخص الفواتير والمدفوعات</h2><p>آخر الفواتير الصادرة والرصيد المستحق.</p></div><button class="soft-button" type="button" data-route="finance">كشف الحساب</button></header>
+        <div class="panel-body">
+          ${invoices.length ? renderClientInvoicesSummary(invoices.slice(0, 5)) : '<p class="portal-empty-copy">لا توجد فواتير صادرة لهذا الحساب حتى الآن.</p>'}
+        </div>
+      </article>
+    </div>
+  `;
+}
+
+function renderClientInvoicesSummary(invoices) {
+  return `
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>رقم الفاتورة</th>
+            <th>تاريخ الإصدار</th>
+            <th>الإجمالي</th>
+            <th>المتبقي</th>
+            <th>الحالة</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${invoices.map((inv) => {
+            const total = Number(inv.amount || 0) + Number(inv.taxAmount || 0);
+            const due = inv.balanceDue !== undefined ? Number(inv.balanceDue) : (total - Number(inv.paidAmount || 0));
+            return `
+              <tr>
+                <td><strong>${escapeHtml(inv.invoiceNumber || inv.invoiceId)}</strong></td>
+                <td>${formatDate(inv.issueDate)}</td>
+                <td>${money(total, inv.currency)}</td>
+                <td><strong class="${due > 0 ? 'text-danger' : 'text-success'}">${money(due, inv.currency)}</strong></td>
+                <td><span class="status-badge" data-status="${inv.status}">${statusLabel(inv.status)}</span></td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-outline" data-action="download-invoice-pdf" data-id="${inv.invoiceId}">
+                    ${svg('documents')} PDF
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -702,20 +785,378 @@ function clientProjectCard(project) {
   `;
 }
 
-function renderClientModule(route) {
-  const client = selectedPreviewClient();
-  const descriptions = {
-    orders: ['طلباتي', 'ستظهر طلبات الإعلانات والاستوديو المرتبطة بمشروعاتك مع حالة كل طلب.'],
-    finance: ['الفواتير والمدفوعات', 'ستظهر الفواتير الصادرة والمدفوعات والرصيد المستحق دون أي تكلفة داخلية.'],
-    documents: ['المستندات والتسليمات', 'ستظهر روابط التسليم والفواتير وملفات المشروعات المصرح للعميل بها.']
-  };
-  const [heading, copy] = descriptions[route] || [pageMetadata[route].title, 'لا توجد بيانات متاحة بعد.'];
+function renderClientFinanceModule(client) {
+  const invoices = portalData?.invoices || [];
+  const payments = portalData?.payments || [];
+  const statement = portalData?.statement || { entries: [], totalDebit: 0, totalCredit: 0, outstandingBalance: 0 };
+
+  const totalInvoiced = statement.totalDebit || invoices.reduce((sum, i) => sum + Number(i.amount || 0) + Number(i.taxAmount || 0), 0);
+  const totalPaid = statement.totalCredit || payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const outstandingBalance = statement.outstandingBalance !== undefined ? Number(statement.outstandingBalance) : (totalInvoiced - totalPaid);
+
   return `
     <section class="portal-hero compact">
-      <div><span class="hero-kicker">${svg(route)} ${escapeHtml(client?.name || 'حساب العميل')}</span><h2>${heading}</h2><p>${copy}</p></div>
-      ${client ? clientPreviewSelector(client) : ''}
+      <div>
+        <span class="hero-kicker">${svg('finance')} ${escapeHtml(client.name)}</span>
+        <h2>الفواتير والمدفوعات وكشف الحساب</h2>
+        <p>عرض شامل وشفاف لجميع الفواتير الصادرة، الدفعات المسددة، والرصيد الحالي.</p>
+      </div>
+      ${clientPreviewSelector(client)}
     </section>
-    <section class="empty-state"><div><span class="empty-state-icon">${svg(route)}</span><h2>لا توجد سجلات بعد</h2><p>هذه الواجهة جاهزة لاستقبال البيانات بعد توصيل API وقاعدة بيانات الاختبار.</p></div></section>
+
+    <section class="metrics-grid">
+      <article class="metric-card">
+        <span class="metric-icon">${svg('finance')}</span>
+        <div>
+          <span class="metric-label">الرصيد المستحق</span>
+          <strong class="metric-value ${outstandingBalance > 0 ? 'text-warning' : ''}">${money(outstandingBalance)}</strong>
+          <small class="metric-note">${outstandingBalance > 0 ? 'المبلغ المطلوب سداده' : 'الحساب خالص ومسدد'}</small>
+        </div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon">${svg('documents')}</span>
+        <div>
+          <span class="metric-label">إجمالي الفواتير الصادرة</span>
+          <strong class="metric-value">${money(totalInvoiced)}</strong>
+          <small class="metric-note">عدد ${invoices.length} فواتير</small>
+        </div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon">${svg('check')}</span>
+        <div>
+          <span class="metric-label">إجمالي المدفوعات المسددة</span>
+          <strong class="metric-value">${money(totalPaid)}</strong>
+          <small class="metric-note">عدد ${payments.length} عمليات سداد</small>
+        </div>
+      </article>
+    </section>
+
+    <div class="portal-tabs-container">
+      <section class="panel">
+        <header class="panel-header">
+          <div><h2>الفواتير الصادرة (${invoices.length})</h2><p>اضغط تحميل PDF للتحميل أو الطباعة المباشرة.</p></div>
+        </header>
+        <div class="panel-body">
+          ${invoices.length ? `
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>المشروع</th>
+                    <th>تاريخ الإصدار</th>
+                    <th>تاريخ الاستحقاق</th>
+                    <th>المبلغ الصافي</th>
+                    <th>الضريبة</th>
+                    <th>الإجمالي</th>
+                    <th>المسدد</th>
+                    <th>المتبقي</th>
+                    <th>الحالة</th>
+                    <th>تحميل</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${invoices.map((inv) => {
+                    const net = Number(inv.amount || 0);
+                    const tax = Number(inv.taxAmount || 0);
+                    const total = net + tax;
+                    const paid = Number(inv.paidAmount || 0);
+                    const due = inv.balanceDue !== undefined ? Number(inv.balanceDue) : (total - paid);
+                    return `
+                      <tr>
+                        <td><strong>${escapeHtml(inv.invoiceNumber || inv.invoiceId)}</strong></td>
+                        <td>${escapeHtml(inv.projectName || 'عام')}</td>
+                        <td>${formatDate(inv.issueDate)}</td>
+                        <td>${formatDate(inv.dueDate)}</td>
+                        <td>${money(net, inv.currency)}</td>
+                        <td>${money(tax, inv.currency)}</td>
+                        <td><strong>${money(total, inv.currency)}</strong></td>
+                        <td>${money(paid, inv.currency)}</td>
+                        <td><strong class="${due > 0 ? 'text-danger' : 'text-success'}">${money(due, inv.currency)}</strong></td>
+                        <td><span class="status-badge" data-status="${inv.status}">${statusLabel(inv.status)}</span></td>
+                        <td>
+                          <button type="button" class="btn btn-sm btn-primary" data-action="download-invoice-pdf" data-id="${inv.invoiceId}">
+                            ${svg('documents')} PDF
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : emptyState('finance', 'لا توجد فواتير', 'لم يتم إصدار أي فواتير لهذا الحساب بعد.', null, null)}
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top: 1.5rem;">
+        <header class="panel-header">
+          <div><h2>سجل الدفعات والتحويلات (${payments.length})</h2><p>إيصالات السداد المؤكدة من الإدارة المالية.</p></div>
+        </header>
+        <div class="panel-body">
+          ${payments.length ? `
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>رقم الدفعة</th>
+                    <th>تاريخ الدفع</th>
+                    <th>المبلغ</th>
+                    <th>الفاتورة المرتبطة</th>
+                    <th>طريقة الدفع</th>
+                    <th>رقم المرجع</th>
+                    <th>ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${payments.map((p) => `
+                    <tr>
+                      <td><strong>${escapeHtml(p.paymentId)}</strong></td>
+                      <td>${formatDate(p.paymentDate)}</td>
+                      <td><strong class="text-success">${money(p.amount, p.currency)}</strong></td>
+                      <td>${escapeHtml(p.invoiceNumber || p.invoiceId || 'حساب عام')}</td>
+                      <td>${escapeHtml(p.paymentMethod || 'تحويل')}</td>
+                      <td>${escapeHtml(p.referenceNumber || '—')}</td>
+                      <td>${escapeHtml(p.notes || '—')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : emptyState('finance', 'لا توجد مدفوعات', 'لم يتم تسجيل دفعات مسددة حتى الآن.', null, null)}
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top: 1.5rem;">
+        <header class="panel-header">
+          <div><h2>كشف الحساب التفصيلي (${statement.entries?.length || 0})</h2><p>سجل الحركات المالية (مدين / دائن).</p></div>
+        </header>
+        <div class="panel-body">
+          ${statement.entries?.length ? `
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>التاريخ</th>
+                    <th>البيان</th>
+                    <th>نوع الحركة</th>
+                    <th>مدين (+)</th>
+                    <th>دائن (-)</th>
+                    <th>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${statement.entries.map((entry) => `
+                    <tr>
+                      <td>${formatDate(entry.entryDate)}</td>
+                      <td>${escapeHtml(entry.description || 'حركة حساب')}</td>
+                      <td><span class="status-badge" data-status="${entry.entryType}">${statusLabel(entry.entryType || entry.referenceType)}</span></td>
+                      <td>${Number(entry.debit) > 0 ? `<strong class="text-danger">${money(entry.debit, entry.currency)}</strong>` : '—'}</td>
+                      <td>${Number(entry.credit) > 0 ? `<strong class="text-success">${money(entry.credit, entry.currency)}</strong>` : '—'}</td>
+                      <td><span class="status-badge" data-status="${entry.status}">${statusLabel(entry.status)}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : emptyState('finance', 'لا توجد حركات', 'لا توجد حركات كشف حساب مسجلة.', null, null)}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderClientOrdersModule(client) {
+  const ads = portalData?.ads || [];
+  const studioJobs = portalData?.studioJobs || [];
+  const requests = portalData?.requests || [];
+
+  return `
+    <section class="portal-hero compact">
+      <div>
+        <span class="hero-kicker">${svg('orders')} ${escapeHtml(client.name)}</span>
+        <h2>طلباتي والإعلانات والخدمات</h2>
+        <p>متابعة حملات الإعلانات الممولة وأعمال الاستوديو والتصميم والطلبات المباشرة.</p>
+      </div>
+      ${clientPreviewSelector(client)}
+    </section>
+
+    <section class="metrics-grid">
+      <article class="metric-card">
+        <span class="metric-icon">${svg('ads')}</span>
+        <div><span class="metric-label">الحملات الإعلانية</span><strong class="metric-value">${ads.length}</strong><small class="metric-note">إعلانات ممولة</small></div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon">${svg('studio')}</span>
+        <div><span class="metric-label">أعمال الاستوديو</span><strong class="metric-value">${studioJobs.length}</strong><small class="metric-note">تصوير ومونتاج وتصميم</small></div>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon">${svg('orders')}</span>
+        <div><span class="metric-label">طلبات الخدمات</span><strong class="metric-value">${requests.length}</strong><small class="metric-note">محادثات وعروض أسعار</small></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <header class="panel-header">
+        <div><h2>الإعلانات الممولة (${ads.length})</h2><p>تفاصيل المنصة والميزانية والحالة.</p></div>
+      </header>
+      <div class="panel-body">
+        ${ads.length ? `
+          <div class="entity-grid">
+            ${ads.map((ad) => `
+              <article class="entity-card">
+                <div class="entity-card-top">
+                  <div><h3>${escapeHtml(ad.campaignName || ad.platform || 'إعلان ممول')}</h3><p>منصة: ${escapeHtml(ad.platform || 'غير محددة')}</p></div>
+                  <span class="status-badge" data-status="${ad.status}">${statusLabel(ad.status)}</span>
+                </div>
+                <div class="entity-meta">
+                  <div><span>الأيام / اليومية</span><strong>${ad.days || 0} يوم (${money(ad.dailyRate)}/يوم)</strong></div>
+                  <div><span>سعر الخدمة</span><strong>${money(ad.salePrice)}</strong></div>
+                  <div><span>تاريخ البدء</span><strong>${formatDate(ad.startDate)}</strong></div>
+                  <div><span>تاريخ الانتهاء</span><strong>${formatDate(ad.endDate)}</strong></div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        ` : emptyState('ads', 'لا توجد إعلانات', 'لم يتم إنشاء إعلانات ممولة لهذا الحساب بعد.', null, null)}
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top: 1.5rem;">
+      <header class="panel-header">
+        <div><h2>أعمال الاستوديو والتصميم (${studioJobs.length})</h2><p>مهام التصوير والإنتاج والتصميم.</p></div>
+      </header>
+      <div class="panel-body">
+        ${studioJobs.length ? `
+          <div class="entity-grid">
+            ${studioJobs.map((job) => `
+              <article class="entity-card">
+                <div class="entity-card-top">
+                  <div><h3>${escapeHtml(job.title || 'عمل استوديو')}</h3><p>نوع الخدمة: ${escapeHtml(job.jobType || 'إنتاج')}</p></div>
+                  <span class="status-badge" data-status="${job.status}">${statusLabel(job.status)}</span>
+                </div>
+                <div class="entity-meta">
+                  <div><span>المشروع</span><strong>${escapeHtml(job.projectName || 'عام')}</strong></div>
+                  <div><span>موعد التسليم</span><strong>${formatDate(job.dueDate)}</strong></div>
+                  <div><span>حالة الإنجاز</span><strong>${job.progress || 0}%</strong></div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        ` : emptyState('studio', 'لا توجد أعمال استوديو', 'لا توجد أعمال استوديو مسجلة لهذا الحساب.', null, null)}
+      </div>
+    </section>
+  `;
+}
+
+function renderClientDocumentsModule(client) {
+  const deliveries = portalData?.deliveries || [];
+  const invoices = portalData?.invoices || [];
+
+  return `
+    <section class="portal-hero compact">
+      <div>
+        <span class="hero-kicker">${svg('documents')} ${escapeHtml(client.name)}</span>
+        <h2>المستندات والتسليمات</h2>
+        <p>ملفات المشروعات، التسليمات الفنية، وملفات الفواتير المتاحة للتحميل.</p>
+      </div>
+      ${clientPreviewSelector(client)}
+    </section>
+
+    <section class="panel">
+      <header class="panel-header">
+        <div><h2>ملفات الفواتير والتحميل المباشر</h2><p>تحميل نسخ PDF الرسمية للفواتير.</p></div>
+      </header>
+      <div class="panel-body">
+        ${invoices.length ? `
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>اسم الملف</th>
+                  <th>تاريخ الإصدار</th>
+                  <th>المبلغ</th>
+                  <th>التحميل</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${invoices.map((inv) => `
+                  <tr>
+                    <td><strong>فاتورة رقم ${escapeHtml(inv.invoiceNumber || inv.invoiceId)}</strong></td>
+                    <td>${formatDate(inv.issueDate)}</td>
+                    <td>${money(Number(inv.amount || 0) + Number(inv.taxAmount || 0), inv.currency)}</td>
+                    <td>
+                      <button type="button" class="btn btn-sm btn-primary" data-action="download-invoice-pdf" data-id="${inv.invoiceId}">
+                        ${svg('documents')} تحميل PDF
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState('documents', 'لا توجد مستندات فواتير', 'لم يتم إصدار فواتير بعد.', null, null)}
+      </div>
+    </section>
+
+    ${deliveries.length ? `
+      <section class="panel" style="margin-top: 1.5rem;">
+        <header class="panel-header">
+          <div><h2>تسليمات الاستوديو والمشروعات (${deliveries.length})</h2><p>الملفات والتصاميم المرفوقة مع طلباتك.</p></div>
+        </header>
+        <div class="panel-body">
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>اسم الملف</th>
+                  <th>النوع</th>
+                  <th>تاريخ الرفع</th>
+                  <th>رابط التحميل</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${deliveries.map((file) => `
+                  <tr>
+                    <td><strong>${escapeHtml(file.name)}</strong></td>
+                    <td><span class="status-badge" data-status="APPROVED">${escapeHtml(file.type || 'ملف')}</span></td>
+                    <td>${formatDate(file.createdAt)}</td>
+                    <td>
+                      ${file.url ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">${svg('documents')} فتح الملف</a>` : '—'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    ` : ''}
+  `;
+}
+
+function renderClientModule(route) {
+  const client = selectedPreviewClient();
+  if (!client) {
+    return emptyState('clients', 'لا يوجد حساب عميل للمعاينة', 'ارجع إلى دور المدير الأساسي وأضف عميلًا أولًا.', 'العودة للإدارة', 'role-primary');
+  }
+
+  if (route === 'finance') return renderClientFinanceModule(client);
+  if (route === 'orders') return renderClientOrdersModule(client);
+  if (route === 'documents') return renderClientDocumentsModule(client);
+
+  const descriptions = {
+    orders: ['طلباتي والإعلانات', 'طلبات الإعلانات والاستوديو والخدمات المباشرة المرتبطة بمشروعاتك.'],
+    finance: ['الفواتير والمدفوعات', 'سجل الفواتير الصادرة والمدفوعات وكشف الحساب التفصيلي.'],
+    documents: ['المستندات والتسليمات', 'روابط التسليم وملفات المشروعات والفواتير المتاحة للتحميل.']
+  };
+  const [heading, copy] = descriptions[route] || [pageMetadata[route]?.title || 'الوحدة', 'لا توجد بيانات متاحة بعد.'];
+  return `
+    <section class="portal-hero compact">
+      <div><span class="hero-kicker">${svg(route)} ${escapeHtml(client.name)}</span><h2>${heading}</h2><p>${copy}</p></div>
+      ${clientPreviewSelector(client)}
+    </section>
+    <section class="empty-state"><div><span class="empty-state-icon">${svg(route)}</span><h2>لا توجد سجلات بعد</h2><p>لا توجد بيانات مسجلة لهذا الحساب حاليًا.</p></div></section>
   `;
 }
 
@@ -782,7 +1223,7 @@ function employeeTaskCard(project) {
 }
 
 function renderApprovals() {
-  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']);
+  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']).reverse();
   const pending = items.filter((request) => request.status === 'PENDING').length;
   return `
     ${rolePreviewBanner()}
@@ -810,7 +1251,6 @@ function approvalCard(request) {
       <div class="change-summary">${changeSummary(request)}</div>
       ${request.reviewedAt ? `<p class="review-note">تمت المراجعة بواسطة ${escapeHtml(request.reviewedBy || 'المدير الأساسي')} في ${formatDateTime(request.reviewedAt)}.</p>` : ''}
       ${canReview ? `<footer><button class="ghost-button danger-button" type="button" data-action="reject-approval" data-id="${escapeHtml(request.id)}">رفض</button><button class="primary-button" type="button" data-action="approve-approval" data-id="${escapeHtml(request.id)}">اعتماد وتنفيذ</button></footer>` : ''}
-      ${canReviewApprovals() && !['PENDING','PROCESSING'].includes(request.status) ? `<footer><button class="soft-button" type="button" data-action="archive-approval" data-id="${escapeHtml(request.id)}">أرشفة الطلب</button></footer>` : ''}
     </article>
   `;
 }
@@ -989,7 +1429,9 @@ function statusLabel(status) {
   return ({
     ACTIVE: 'نشط', INACTIVE: 'غير نشط', PLANNED: 'مخطط', ON_HOLD: 'متوقف',
     COMPLETED: 'مكتمل', CANCELLED: 'ملغي', ARCHIVED: 'مؤرشف',
-    PENDING: 'معلّق', APPROVED: 'معتمد', REJECTED: 'مرفوض'
+    PENDING: 'معلّق', APPROVED: 'معتمد', REJECTED: 'مرفوض',
+    DRAFT: 'مسودة', SENT: 'تم الإرسال', PAID: 'مسددة', OVERDUE: 'متأخرة', PARTIAL: 'سداد جزئي',
+    NEW: 'جديد', PROCESSING: 'قيد المعالجة', PAID_ADS: 'إعلان ممول', STUDIO: 'استوديو'
   })[status] || status;
 }
 
@@ -1270,11 +1712,7 @@ async function requestOrApplyChange(entityType, entityId, action, payload, descr
   }
 
   const route = entityType === 'client' ? 'clients' : 'projects';
-  if (action === 'CREATE') {
-    await ANCAuth.request(route, 'POST', apiPayload);
-  } else {
-    await ANCAuth.request('approvals.apply', 'POST', { entityType, entityId, action, payload: apiPayload, description });
-  }
+  await ANCAuth.request(route, action === 'CREATE' ? 'POST' : 'PUT', apiPayload);
   await loadProductionState();
   dialog.close();
   showToast('تم حفظ التغيير', `${description} — تم تسجيل العملية في الخادم وسجل التدقيق.`);
@@ -1362,20 +1800,6 @@ async function reviewApproval(requestId, decision) {
     renderPage();
   } catch (error) {
     showToast('تعذرت مراجعة الطلب', error.message || 'حاول مرة أخرى.', { icon: 'alerts' });
-  }
-}
-async function archiveApproval(requestId) {
-  if (!canReviewApprovals()) return;
-  const request = state.approvals.find((item) => item.id === requestId);
-  if (!request || ['PENDING','PROCESSING'].includes(request.status)) return;
-  if (!window.confirm('هل تريد أرشفة طلب الاعتماد المكتمل؟')) return;
-  try {
-    await ANCAuth.request('approvals.archive', 'POST', { approvalId: requestId });
-    await loadProductionState();
-    showToast('تمت أرشفة الطلب', request.description, { icon: 'approvals' });
-    renderPage();
-  } catch (error) {
-    showToast('تعذرت أرشفة الطلب', error.message || 'حاول مرة أخرى.', { icon: 'alerts' });
   }
 }
 function showFormError(message) {
@@ -1498,8 +1922,33 @@ document.addEventListener('click', async (event) => {
   if (action === 'restore-project') await archiveOrRestoreEntity('project', entityId, true);
   if (action === 'approve-approval') await reviewApproval(entityId, 'APPROVED');
   if (action === 'reject-approval') await reviewApproval(entityId, 'REJECTED');
-  if (action === 'archive-approval') await archiveApproval(entityId);
   if (action === 'update-progress') openProgressDialog(entityId);
+  if (action === 'download-invoice-pdf') {
+    const invoiceId = actionTarget.dataset.id;
+    if (!invoiceId) return;
+    try {
+      showToast('جاري تحضير الفاتورة...', 'يرجى الانتظار لحين تحميل ملف PDF.', { icon: 'documents' });
+      const res = await ANCAuth.request('invoices.pdf', 'POST', { invoiceId });
+      if (res?.url) {
+        window.open(res.url, '_blank');
+      } else {
+        throw new Error('لم يتم إرجاع رابط تحميل الملف.');
+      }
+    } catch (err) {
+      showToast('تعذر تحميل الفاتورة', err.message || 'حاول مرة أخرى.', { icon: 'alerts' });
+    }
+  }
+});
+
+document.addEventListener('change', async (event) => {
+  const target = event.target;
+  if (target?.dataset?.action === 'change-preview-client') {
+    const newClientId = target.value;
+    localStorage.setItem(CLIENT_PREVIEW_KEY, newClientId);
+    await loadProductionState();
+    renderPage();
+    showToast('تم تغيير حساب العميل', 'تم تحديث البيانات المعروضة في البوابة.', { icon: 'clients' });
+  }
 });
 
 document.addEventListener('input', (event) => {
