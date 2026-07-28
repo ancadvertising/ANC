@@ -303,7 +303,7 @@
     }));
     document.querySelectorAll('[data-expense-archive]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب أرشفة المصروف وعكس حركته البنكية للاعتماد. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
         const result = await API.post('expenses.archive',{ expenseId:button.dataset.expenseArchive, reason:'Archive requested from expense list' });
@@ -360,11 +360,12 @@
     }));
     document.querySelectorAll('[data-account-delete]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب تعطيل وحذف آمن للحساب البنكي إلى المدير الأساسي، مع الاحتفاظ بكل الحركات التاريخية. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'BANK_ACCOUNT',entityId:button.dataset.accountDelete,action:'DELETE',payload:{reason:'Safe delete requested from bank accounts list'},description:'طلب حذف آمن لحساب بنكي مع الاحتفاظ بالحركات'});
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({entityType:'BANK_ACCOUNT',entityId:button.dataset.accountDelete,action:'DELETE',payload:{reason:'Safe delete requested from bank accounts list'},description:'طلب حذف آمن لحساب بنكي مع الاحتفاظ بالحركات'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
@@ -373,11 +374,12 @@
     }));
     document.querySelectorAll('[data-expense-delete]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب حذف آمن للمصروف إلى المدير الأساسي، وعند اعتماده ستُعكس الحركة البنكية دون محوها. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'EXPENSE',entityId:button.dataset.expenseDelete,action:'DELETE',payload:{reason:'Safe delete requested from expenses list'},description:'طلب حذف آمن لمصروف مع عكس الحركة البنكية'});
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({entityType:'EXPENSE',entityId:button.dataset.expenseDelete,action:'DELETE',payload:{reason:'Safe delete requested from expenses list'},description:'طلب حذف آمن لمصروف مع عكس الحركة البنكية'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {
@@ -386,11 +388,12 @@
     }));
     document.querySelectorAll('[data-invoice-delete]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (button.disabled || !confirm('سيتم إرسال طلب إلغاء وحذف آمن للفاتورة إلى المدير الأساسي، مع الاحتفاظ بسجلها. متابعة؟')) return;
+      if (button.disabled || !confirm('هل تريد متابعة إلغاء الفاتورة وحذفها الآمن؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'INVOICE',entityId:button.dataset.invoiceDelete,action:'DELETE',payload:{reason:'Safe delete requested from invoices list'},description:'طلب حذف آمن لفاتورة غير مسددة'});
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({entityType:'INVOICE',entityId:button.dataset.invoiceDelete,action:'DELETE',payload:{reason:'Safe delete requested from invoices list'},description:'طلب حذف آمن لفاتورة غير مسددة'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
         button.disabled = false;

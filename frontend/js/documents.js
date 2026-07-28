@@ -133,11 +133,12 @@
     }));
     document.querySelectorAll('[data-document-delete]').forEach(button => button.addEventListener('click',async event => {
       event.stopPropagation();
-      if (!confirm('سيتم إرسال طلب حذف آمن للمستند إلى المدير الأساسي. سيبقى سجل التدقيق والملف محفوظين وفق سياسة الأرشفة. متابعة؟')) return;
+      if (!confirm('هل تريد متابعة هذه العملية؟')) return;
       try {
         button.disabled = true;
-        await UI.requestApproval({entityType:'DOCUMENT',entityId:button.dataset.documentDelete,action:'DELETE',payload:{reason:'Safe delete requested from documents list'},description:'طلب حذف آمن لمستند من القائمة'});
-        UI.toast('تم إرسال طلب الحذف الآمن للاعتماد.');
+        const result = await UI.requestApproval({entityType:'DOCUMENT',entityId:button.dataset.documentDelete,action:'DELETE',payload:{reason:'Safe delete requested from documents list'},description:'طلب حذف آمن لمستند من القائمة'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await load();
       } catch (error) {
         UI.toast(error.message,'error');
       } finally {

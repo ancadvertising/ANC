@@ -294,10 +294,10 @@ window.UI = (() => {
 
   function inferEntity(row) {
     const keys = [
-      ['Client ID','CLIENT'],['Project ID','PROJECT'],['Task ID','TASK'],['Ad ID','AD'],
-      ['Studio Job ID','STUDIO_JOB'],['User ID','USER'],['Document ID','DOCUMENT'],
-      ['Invoice ID','INVOICE'],['Bank Account ID','BANK_ACCOUNT'],['Expense ID','EXPENSE'],
-      ['Request ID','SERVICE_REQUEST']
+      ['Task ID','TASK'],['Ad ID','AD'],['Studio Job ID','STUDIO_JOB'],
+      ['Invoice ID','INVOICE'],['Expense ID','EXPENSE'],['Request ID','SERVICE_REQUEST'],
+      ['Document ID','DOCUMENT'],['User ID','USER'],['Bank Account ID','BANK_ACCOUNT'],
+      ['Project ID','PROJECT'],['Client ID','CLIENT']
     ];
     const match = keys.find(([key]) => row?.[key]);
     return match ? { entityId: String(row[match[0]]), entityType: match[1] } : null;
@@ -349,8 +349,11 @@ window.UI = (() => {
     if (entityType && typeof entityType === 'object') {
       ({ entityType, entityId, action, payload, description } = entityType);
     }
-    const result = await API.post('approvals', { entityType, entityId, action, payload: payload || {}, description });
-    toast('تم إرسال طلب الاعتماد إلى المدير الأساسي.');
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    const isPrimaryManager = user.userType === 'ADMIN' || ['ADMIN','MANAGER'].includes(role);
+    const route = isPrimaryManager ? 'approvals.apply' : 'approvals';
+    const result = await API.post(route, { entityType, entityId, action, payload: payload || {}, description });
     return result;
   }
 

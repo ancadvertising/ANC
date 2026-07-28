@@ -73,7 +73,7 @@
         <div class="field"><label class="check-row"><input name="requiresAck" type="checkbox"> يتطلب موافقة إلزامية</label></div>
         <div class="field actions"><button class="btn btn-primary" type="submit">إرسال الإشعار</button></div>
       </form>
-      ${UI.table(notifications.slice(0,10),[{key:'Title Ar',label:'العنوان'},{key:'Audience',label:'الجمهور',render:UI.badge},{key:'Frequency',label:'التكرار',render:UI.badge},{key:'Requires Ack',label:'موافقة',render:UI.badge},{key:'Created At',label:'التاريخ',render:UI.date}])}
+      ${UI.table(notifications.slice(0,10),[{key:'Title Ar',label:'العنوان'},{key:'Audience',label:'الجمهور',render:UI.badge},{key:'Frequency',label:'التكرار',render:UI.badge},{key:'Requires Ack',label:'موافقة',render:UI.badge},{key:'Created At',label:'التاريخ',render:UI.date},{key:'Notification ID',label:'الإجراءات',render:(value) => `<button class="btn btn-danger btn-sm" type="button" data-notification-delete="${esc(value)}">حذف</button>`}])}
     </section>`;
   }
 
@@ -131,6 +131,22 @@
     notificationForm.addEventListener('submit',event => {
       event.preventDefault();
       UI.submit(notificationForm,async values => { values.requiresAck = notificationForm.elements.requiresAck.checked; await API.post('notifications',values); UI.toast('تم إنشاء الإشعار.'); await load(currentUser); });
+    });
+    document.querySelectorAll('[data-notification-delete]').forEach(button => {
+      button.addEventListener('click', async event => {
+        event.preventDefault();
+        const notificationId = button.dataset.notificationDelete;
+        if (!window.confirm('هل تريد حذف هذا الإشعار نهائيًا؟')) return;
+        button.disabled = true;
+        try {
+          await API.delete('notifications', { notificationId });
+          UI.toast('تم حذف الإشعار.');
+          await load(currentUser);
+        } catch (error) {
+          button.disabled = false;
+          UI.toast(error.message, 'error');
+        }
+      });
     });
     document.querySelector('#save-page-policies').addEventListener('click',async event => {
       event.preventDefault();

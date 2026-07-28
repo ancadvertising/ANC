@@ -326,7 +326,9 @@ function normalizeApproval(row) {
     reviewedBy: String(row?.reviewedBy || row?.['Reviewed By Email'] || ''),
     reviewNote: String(row?.reviewNote || row?.['Review Note'] || ''),
     createdAt: row?.createdAt || row?.['Created At'] || '',
-    reviewedAt: row?.reviewedAt || row?.['Reviewed At'] || ''
+    reviewedAt: row?.reviewedAt || row?.['Reviewed At'] || '',
+    archived: Boolean(row?.archived || row?.Archived),
+    archivedAt: row?.archivedAt || row?.['Archived At'] || ''
   };
 }
 async function loadProductionState() {
@@ -780,7 +782,7 @@ function employeeTaskCard(project) {
 }
 
 function renderApprovals() {
-  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']).reverse();
+  const items = UI.filterRows(state.approvals, ['createdAt', 'reviewedAt']);
   const pending = items.filter((request) => request.status === 'PENDING').length;
   return `
     ${rolePreviewBanner()}
@@ -808,6 +810,7 @@ function approvalCard(request) {
       <div class="change-summary">${changeSummary(request)}</div>
       ${request.reviewedAt ? `<p class="review-note">تمت المراجعة بواسطة ${escapeHtml(request.reviewedBy || 'المدير الأساسي')} في ${formatDateTime(request.reviewedAt)}.</p>` : ''}
       ${canReview ? `<footer><button class="ghost-button danger-button" type="button" data-action="reject-approval" data-id="${escapeHtml(request.id)}">رفض</button><button class="primary-button" type="button" data-action="approve-approval" data-id="${escapeHtml(request.id)}">اعتماد وتنفيذ</button></footer>` : ''}
+      ${canReviewApprovals() && !['PENDING','PROCESSING'].includes(request.status) ? `<footer><button class="soft-button" type="button" data-action="archive-approval" data-id="${escapeHtml(request.id)}">أرشفة الطلب</button></footer>` : ''}
     </article>
   `;
 }
@@ -1251,7 +1254,7 @@ async function requestOrApplyChange(entityType, entityId, action, payload, descr
   if (!canManageRecords()) throw new Error('ليس لديك صلاحية تعديل هذا السجل.');
   const apiPayload = serverPayload(entityType, entityId, action, payload);
 
-  if (currentRole === 'ASSISTANT_MANAGER' || action !== 'CREATE') {
+  if (currentRole === 'ASSISTANT_MANAGER') {
     await ANCAuth.request('approvals', 'POST', {
       entityType,
       entityId,
@@ -1267,7 +1270,11 @@ async function requestOrApplyChange(entityType, entityId, action, payload, descr
   }
 
   const route = entityType === 'client' ? 'clients' : 'projects';
-  await ANCAuth.request(route, action === 'CREATE' ? 'POST' : 'PUT', apiPayload);
+  if (action === 'CREATE') {
+    await ANCAuth.request(route, 'POST', apiPayload);
+  } else {
+    await ANCAuth.request('approvals.apply', 'POST', { entityType, entityId, action, payload: apiPayload, description });
+  }
   await loadProductionState();
   dialog.close();
   showToast('تم حفظ التغيير', `${description} — تم تسجيل العملية في الخادم وسجل التدقيق.`);
@@ -1355,6 +1362,20 @@ async function reviewApproval(requestId, decision) {
     renderPage();
   } catch (error) {
     showToast('تعذرت مراجعة الطلب', error.message || 'حاول مرة أخرى.', { icon: 'alerts' });
+  }
+}
+async function archiveApproval(requestId) {
+  if (!canReviewApprovals()) return;
+  const request = state.approvals.find((item) => item.id === requestId);
+  if (!request || ['PENDING','PROCESSING'].includes(request.status)) return;
+  if (!window.confirm('هل تريد أرشفة طلب الاعتماد المكتمل؟')) return;
+  try {
+    await ANCAuth.request('approvals.archive', 'POST', { approvalId: requestId });
+    await loadProductionState();
+    showToast('تمت أرشفة الطلب', request.description, { icon: 'approvals' });
+    renderPage();
+  } catch (error) {
+    showToast('تعذرت أرشفة الطلب', error.message || 'حاول مرة أخرى.', { icon: 'alerts' });
   }
 }
 function showFormError(message) {
@@ -1477,6 +1498,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'restore-project') await archiveOrRestoreEntity('project', entityId, true);
   if (action === 'approve-approval') await reviewApproval(entityId, 'APPROVED');
   if (action === 'reject-approval') await reviewApproval(entityId, 'REJECTED');
+  if (action === 'archive-approval') await archiveApproval(entityId);
   if (action === 'update-progress') openProgressDialog(entityId);
 });
 

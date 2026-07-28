@@ -59,3 +59,24 @@ test('migration contains the workflow schema and remains append-only', async () 
   assert.match(migration, /ALTER TABLE paid_ads ADD COLUMN archived/);
   assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM/i);
 });
+test('primary manager can configure studio job types without changing historical jobs', async () => {
+  const [worker, studio, migration] = await Promise.all([
+    read('worker/src/index.js'),
+    read('frontend/js/studio.js'),
+    read('worker/migrations/0005_studio_job_types.sql')
+  ]);
+
+  assert.match(worker, /DEFAULT_STUDIO_JOB_TYPES/);
+  assert.match(worker, /async function createStudioJobType/);
+  assert.match(worker, /async function updateStudioJobType/);
+  assert.match(worker, /activeStudioJobType\(env, data\.jobType\)/);
+  assert.match(worker, /"GET studio\.jobTypes"/);
+  assert.match(worker, /"POST studio\.jobTypes"/);
+  assert.match(worker, /"PUT studio\.jobTypes"/);
+  assert.match(studio, /typeManagementSection/);
+  assert.match(studio, /API\.post\('studio\.jobTypes'/);
+  assert.match(studio, /API\.put\('studio\.jobTypes'/);
+  assert.match(studio, /EQUIPMENT_RENTAL/);
+  assert.match(migration, /CREATE TABLE studio_job_types/);
+  assert.match(migration, /EQUIPMENT_RENTAL/);
+});
