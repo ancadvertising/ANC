@@ -1,4 +1,4 @@
-@ -642,10 +642,7 @@ function approvalToApi(row) {
+ function approvalToApi(row) {
     reviewedBy: row.reviewed_by_email,
     reviewNote: row.review_note,
     createdAt: row.created_at,
