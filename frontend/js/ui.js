@@ -75,67 +75,7 @@ window.UI = (() => {
     return `<span class="badge ${cls}">${escape(text)}</span>`;
   }
 
-  const fieldTranslations = {
-    'Client Name': 'اسم العميل',
-    'clientName': 'اسم العميل',
-    'Project Name': 'اسم المشروع',
-    'projectName': 'اسم المشروع',
-    'Title': 'العنوان',
-    'title': 'العنوان',
-    'Name': 'الاسم',
-    'name': 'الاسم',
-    'Description': 'الوصف',
-    'description': 'الوصف',
-    'Status': 'الحالة',
-    'status': 'الحالة',
-    'Amount': 'المبلغ',
-    'amount': 'المبلغ',
-    'Currency': 'العملة',
-    'currency': 'العملة',
-    'Issue Date': 'تاريخ الإصدار',
-    'issueDate': 'تاريخ الإصدار',
-    'Due Date': 'تاريخ الاستحقاق',
-    'dueDate': 'تاريخ الاستحقاق',
-    'Start Date': 'تاريخ البدء',
-    'startDate': 'تاريخ البدء',
-    'End Date': 'تاريخ الانتهاء',
-    'endDate': 'تاريخ الانتهاء',
-    'Created At': 'تاريخ الإنشاء',
-    'createdAt': 'تاريخ الإنشاء',
-    'Updated At': 'تاريخ التحديث',
-    'updatedAt': 'تاريخ التحديث',
-    'Created By': 'تم بواسطة',
-    'createdBy': 'تم بواسطة',
-    'Phone': 'الهاتف',
-    'phone': 'الهاتف',
-    'Email': 'البريد الإلكتروني',
-    'email': 'البريد الإلكتروني',
-    'Notes': 'الملاحظات',
-    'notes': 'الملاحظات',
-    'Progress': 'نسبة الإنجاز',
-    'progress': 'نسبة الإنجاز',
-    'Budget': 'الميزانية',
-    'budget': 'الميزانية',
-    'Platform': 'المنصة',
-    'platform': 'المنصة',
-    'Job Type': 'نوع الخدمة',
-    'jobType': 'نوع الخدمة',
-    'Assigned To': 'المسؤول',
-    'assignedTo': 'المسؤول',
-    'Delivery URL': 'رابط التسليم',
-    'deliveryUrl': 'رابط التسليم',
-    'Brief': 'التفاصيل التنفيذية',
-    'brief': 'التفاصيل التنفيذية',
-    'Sale Price': 'سعر البيع',
-    'salePrice': 'سعر البيع',
-    'Direct Cost': 'التكلفة المباشرة',
-    'directCost': 'التكلفة المباشرة',
-    'Billable': 'قابل للفوترة',
-    'billable': 'قابل للفوترة'
-  };
-
   function humanize(key) {
-    if (fieldTranslations[key]) return fieldTranslations[key];
     return String(key || '')
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .replace(/[_-]+/g, ' ')
@@ -152,20 +92,10 @@ window.UI = (() => {
     return escape(value);
   }
 
-  function isExcludedDetailKey(key) {
-    const pattern = /^(password|salt|hash|base64|token|secret|actions|action|options|الاجراءات|الإجراءات|الخيارات|الإجراء|_id|id|clientId|projectId|taskId|adId|studioJobId|userId|documentId|invoiceId|bankAccountId|expenseId|requestId|paymentId|approvalId|employeeId|statementId|assetId|client_id|project_id|task_id|ad_id|studio_job_id|user_id|document_id|invoice_id|bank_account_id|expense_id|request_id|payment_id|approval_id|employee_id|statement_id|asset_id|Client ID|Project ID|Task ID|Ad ID|Studio Job ID|User ID|Document ID|Invoice ID|Bank Account ID|Expense ID|Request ID|Payment ID|Approval ID|Employee ID|Client Statement ID|Asset ID)$/i;
-    return pattern.test(String(key || '').trim());
-  }
-
   function openDetails(row, columns = [], title = '') {
     document.querySelector('.record-drawer-backdrop')?.remove();
     const labels = new Map(columns.map(column => [column.key, column.label]));
-    const fields = Object.entries(row || {}).filter(([key, value]) => {
-      if (isExcludedDetailKey(key)) return false;
-      if (typeof value === 'function') return false;
-      return true;
-    });
-
+    const fields = Object.entries(row || {}).filter(([key]) => !/(password|salt|hash|base64|token|secret)/i.test(key));
     const root = document.createElement('div');
     root.className = 'record-drawer-backdrop';
     root.innerHTML = `
@@ -175,11 +105,7 @@ window.UI = (() => {
           <button class="btn" type="button" data-close-drawer>إغلاق</button>
         </header>
         <div class="record-detail-grid">
-          ${fields.map(([key, value]) => {
-            const rawLabel = labels.get(key);
-            const labelText = rawLabel && !isExcludedDetailKey(rawLabel) ? rawLabel : humanize(key);
-            return `<div class="record-detail-item"><span>${escape(labelText)}</span><strong>${detailDisplay(value)}</strong></div>`;
-          }).join('')}
+          ${fields.map(([key, value]) => `<div class="record-detail-item"><span>${escape(labels.get(key) || humanize(key))}</span><strong>${detailDisplay(value)}</strong></div>`).join('')}
         </div>
       </aside>`;
     root.addEventListener('click', event => {
@@ -367,32 +293,14 @@ window.UI = (() => {
 
 
   function inferEntity(row) {
-    if (!row || typeof row !== 'object') return null;
-
-    const keyMap = [
-      [['Studio Job ID', 'studio_job_id', 'studioJobId', 'jobId', 'job_id'], 'STUDIO_JOB'],
-      [['Request ID', 'request_id', 'requestId'], 'SERVICE_REQUEST'],
-      [['Ad ID', 'ad_id', 'adId'], 'AD'],
-      [['Task ID', 'task_id', 'taskId'], 'TASK'],
-      [['Invoice ID', 'invoice_id', 'invoiceId'], 'INVOICE'],
-      [['Payment ID', 'payment_id', 'paymentId'], 'PAYMENT'],
-      [['Expense ID', 'expense_id', 'expenseId'], 'EXPENSE'],
-      [['Document ID', 'document_id', 'documentId'], 'DOCUMENT'],
-      [['Bank Account ID', 'bank_account_id', 'bankAccountId', 'accountId', 'account_id'], 'BANK_ACCOUNT'],
-      [['Approval ID', 'approval_id', 'approvalId'], 'APPROVAL'],
-      [['User ID', 'user_id', 'userId'], 'USER'],
-      [['Project ID', 'project_id', 'projectId'], 'PROJECT'],
-      [['Client ID', 'client_id', 'clientId'], 'CLIENT']
+    const keys = [
+      ['Task ID','TASK'],['Ad ID','AD'],['Studio Job ID','STUDIO_JOB'],
+      ['Invoice ID','INVOICE'],['Expense ID','EXPENSE'],['Request ID','SERVICE_REQUEST'],
+      ['Document ID','DOCUMENT'],['User ID','USER'],['Bank Account ID','BANK_ACCOUNT'],
+      ['Project ID','PROJECT'],['Client ID','CLIENT']
     ];
-
-    for (const [candidates, type] of keyMap) {
-      for (const key of candidates) {
-        if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
-          return { entityId: String(row[key]), entityType: type };
-        }
-      }
-    }
-    return null;
+    const match = keys.find(([key]) => row?.[key]);
+    return match ? { entityId: String(row[match[0]]), entityType: match[1] } : null;
   }
 
   async function loadRecordNotes(root, row) {
@@ -441,12 +349,11 @@ window.UI = (() => {
     if (entityType && typeof entityType === 'object') {
       ({ entityType, entityId, action, payload, description } = entityType);
     }
-    const result = await API.post('approvals', { entityType, entityId, action, payload: payload || {}, description });
-    if (result?.approval?.status === 'APPROVED') {
-      toast('تم تنفيذ التعديل بنجاح.');
-    } else {
-      toast('تم إرسال طلب الاعتماد إلى المدير الأساسي.');
-    }
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    const isPrimaryManager = user.userType === 'ADMIN' || ['ADMIN','MANAGER'].includes(role);
+    const route = isPrimaryManager ? 'approvals.apply' : 'approvals';
+    const result = await API.post(route, { entityType, entityId, action, payload: payload || {}, description });
     return result;
   }
 
