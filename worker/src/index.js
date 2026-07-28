@@ -692,6 +692,7 @@ async function createApprovalRequest({ env, actor, data }) {
   if (action !== "CREATE" && !existing) throw new ApiError("APPROVAL_ENTITY_NOT_FOUND", "السجل المطلوب تعديله غير موجود.", {}, 404);
   const duplicate = await first(env, "SELECT approval_id FROM approval_requests WHERE requested_by_user_id = ? AND entity_type = ? AND entity_id = ? AND action = ? AND status IN ('PENDING','PROCESSING')", [actor.userId, entityType, entityId, action]);
   if (duplicate) throw new ApiError("APPROVAL_ALREADY_PENDING", "يوجد بالفعل طلب مماثل ينتظر الاعتماد.", { approvalId: duplicate.approval_id }, 409);
+  const isPrimaryManager = actor.role !== "ASSISTANT_MANAGER";
   const record = {
     approval_id: approvalId,
     requested_by_user_id: actor.userId,
@@ -702,15 +703,20 @@ async function createApprovalRequest({ env, actor, data }) {
     payload_json: JSON.stringify(data.payload),
     before_json: JSON.stringify(existing || {}),
     description: text(data.description).slice(0, 500),
-    status: "PENDING",
-    reviewed_by_user_id: null,
-    reviewed_by_email: "",
-    review_note: "",
+    status: isPrimaryManager ? "APPROVED" : "PENDING",
+    reviewed_by_user_id: isPrimaryManager ? actor.userId : null,
+    reviewed_by_email: isPrimaryManager ? actor.email : "",
+    review_note: isPrimaryManager ? "تعديل مباشر من المدير الأساسي" : "",
     created_at: now(),
-    reviewed_at: null
+    reviewed_at: isPrimaryManager ? now() : null
   };
   await insert(env, "approval_requests", record);
-  await audit(env, actor, "APPROVAL_REQUESTED", entityType, entityId, { approvalId, action, description: record.description });
+  if (isPrimaryManager) {
+    await executeApprovedChange(env, actor, record);
+    await audit(env, actor, "APPROVAL_AUTO_APPROVED", entityType, entityId, { approvalId, action, description: record.description });
+  } else {
+    await audit(env, actor, "APPROVAL_REQUESTED", entityType, entityId, { approvalId, action, description: record.description });
+  }
   return { approval: approvalToApi(record) };
 }
 __name(createApprovalRequest, "createApprovalRequest");
@@ -1298,22 +1304,34 @@ async function statement2(env, clientId) {
   return { entries: toApiList(entries), totalDebit, totalCredit, outstandingBalance: Math.round((totalDebit - totalCredit) * 100) / 100 };
 }
 __name(statement2, "statement");
-async function clientPortal({ env, actor }) {
-  if (actor.userType !== "CLIENT" || !actor.clientId) throw new ApiError("CLIENT_ACCOUNT_REQUIRED", "\u0647\u0630\u0647 \u0627\u0644\u0628\u0648\u0627\u0628\u0629 \u0645\u062E\u0635\u0635\u0629 \u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0627\u0644\u0639\u0645\u0644\u0627\u0621 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629.", {}, 403);
-  const client = await first(env, "SELECT * FROM clients WHERE client_id = ?", [actor.clientId]);
-  if (!client) throw new ApiError("CLIENT_NOT_FOUND", "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629.", {}, 404);
-  const [projects, ads, invoices, payments, assets, account] = await Promise.all([
-    all(env, "SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC", [actor.clientId]),
-    all(env, "SELECT * FROM paid_ads WHERE client_id = ? ORDER BY created_at DESC", [actor.clientId]),
-    all(env, "SELECT * FROM invoices WHERE client_id = ? ORDER BY issue_date DESC", [actor.clientId]),
-    all(env, "SELECT * FROM payments WHERE client_id = ? ORDER BY payment_date DESC", [actor.clientId]),
-    all(env, `SELECT sa.* FROM studio_assets sa JOIN studio_jobs sj ON sj.studio_job_id = sa.studio_job_id WHERE sj.client_id = ? ORDER BY sa.created_at DESC`, [actor.clientId]),
-    statement2(env, actor.clientId)
+async function clientPortal({ env, actor, data }) {
+  let clientId = actor.userType === "CLIENT" ? actor.clientId : (data?.clientId || actor.clientId);
+  if (!clientId && (actor.userType === "ADMIN" || ["ADMIN", "MANAGER", "ASSISTANT_MANAGER"].includes(actor.role))) {
+    const firstClient = await first(env, "SELECT client_id FROM clients WHERE archived = 0 ORDER BY created_at LIMIT 1");
+    clientId = firstClient?.client_id;
+  }
+  if (!clientId) throw new ApiError("CLIENT_ACCOUNT_REQUIRED", "هذه البوابة مخصصة لحسابات العملاء المرتبطة.", {}, 403);
+
+  const client = await first(env, "SELECT * FROM clients WHERE client_id = ?", [clientId]);
+  if (!client) throw new ApiError("CLIENT_NOT_FOUND", "بيانات العميل غير موجودة.", {}, 404);
+
+  const [projects, ads, invoices, payments, assets, account, studioJobs, requests] = await Promise.all([
+    all(env, "SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC", [clientId]),
+    all(env, "SELECT * FROM paid_ads WHERE client_id = ? ORDER BY created_at DESC", [clientId]),
+    all(env, `SELECT i.*, p.project_name, COALESCE(pay.paid_amount, 0) AS paid_amount, (i.amount + i.tax_amount - COALESCE(pay.paid_amount, 0)) AS balance_due FROM invoices i LEFT JOIN projects p ON p.project_id = i.project_id LEFT JOIN (SELECT invoice_id, SUM(amount) AS paid_amount FROM payments GROUP BY invoice_id) pay ON pay.invoice_id = i.invoice_id WHERE i.client_id = ? ORDER BY i.issue_date DESC`, [clientId]),
+    all(env, "SELECT pay.*, i.invoice_number FROM payments pay LEFT JOIN invoices i ON i.invoice_id = pay.invoice_id WHERE pay.client_id = ? ORDER BY pay.payment_date DESC", [clientId]),
+    all(env, `SELECT sa.* FROM studio_assets sa JOIN studio_jobs sj ON sj.studio_job_id = sa.studio_job_id WHERE sj.client_id = ? ORDER BY sa.created_at DESC`, [clientId]),
+    statement2(env, clientId),
+    all(env, "SELECT * FROM studio_jobs WHERE client_id = ? ORDER BY created_at DESC", [clientId]),
+    all(env, "SELECT * FROM project_requests WHERE client_id = ? ORDER BY created_at DESC", [clientId]).catch(() => [])
   ]);
+
   return {
     client: toApi(client),
     projects: toApiList(projects),
     ads: ads.map((row) => toApi(sanitizeAd(row, actor))),
+    studioJobs: toApiList(studioJobs),
+    requests: toApiList(requests),
     invoices: toApiList(invoices),
     payments: toApiList(payments),
     statement: account,
