@@ -1,0 +1,6 @@
+{
+  "$schema": "./worker/node_modules/wrangler/config-schema.json",
+  "name": "anc-marketing-erp",
+  "pages_build_output_dir": "./frontend",
+  "compatibility_date": "2026-07-22"
+}
