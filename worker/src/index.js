@@ -48,7 +48,7 @@ __name(cors, "cors");
 // src/constants.js
 var APP = Object.freeze({
   name: "ANC Marketing Agency ERP",
-  version: "3.2.0",
+  version: "3.2.1",
   currency: "EGP",
   timezone: "Africa/Cairo"
 });
@@ -428,6 +428,7 @@ async function dashboard({ env, actor }) {
       bankBalance: sum(accounts, "current_balance"),
       activeClients: clients.filter((row) => row.status === "ACTIVE").length,
       activeProjects: projects.filter((row) => row.status === "ACTIVE").length,
+      averageProjectProgress: projects.length ? round(projects.reduce((total, row) => total + clamp(row.progress_percent, 0, 100), 0) / projects.length) : 0,
       activeAds: ads.filter((row) => ["ACTIVE", "ON_AIR"].includes(row.status)).length,
       lowProfitAds: ads.filter((row) => number(row.profit) < number(row.minimum_profit_amount) || number(row.profit_margin) < number(row.minimum_profit_margin)).length,
       overdueTasks: tasks.filter((row) => row.due_date && new Date(row.due_date).getTime() < current && row.status !== "DONE").length
@@ -572,6 +573,7 @@ async function createProject({ env, actor, data }) {
   const priority = String(data.priority || "MEDIUM").toUpperCase();
   if (!STATUSES.includes(status) || !PRIORITIES.includes(priority)) throw new ApiError("INVALID_PROJECT_DATA", "\u062D\u0627\u0644\u0629 \u0623\u0648 \u0623\u0648\u0644\u0648\u064A\u0629 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629.");
   const timestamp = now();
+  const progress = clamp(data.progressPercent, 0, 100);
   const record = {
     project_id: id("PRJ"),
     client_id: data.clientId,
@@ -583,6 +585,8 @@ async function createProject({ env, actor, data }) {
     due_date: data.dueDate || null,
     budget: round(data.budget),
     currency: data.currency || "EGP",
+    progress_percent: progress,
+    progress_updated_at: progress > 0 ? timestamp : null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -599,6 +603,8 @@ async function updateProject({ env, actor, data }) {
   const status = data.status ? String(data.status).toUpperCase() : existing.status;
   const priority = data.priority ? String(data.priority).toUpperCase() : existing.priority;
   if (!STATUSES.includes(status) || !PRIORITIES.includes(priority)) throw new ApiError("INVALID_PROJECT_DATA", "\u062D\u0627\u0644\u0629 \u0623\u0648 \u0623\u0648\u0644\u0648\u064A\u0629 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629.");
+  const progress = data.progressPercent === void 0 ? number(existing.progress_percent) : clamp(data.progressPercent, 0, 100);
+  const timestamp = now();
   const saved = await update(env, "projects", {
     client_id: data.clientId ?? existing.client_id,
     project_name: data.projectName ?? existing.project_name,
@@ -609,7 +615,9 @@ async function updateProject({ env, actor, data }) {
     due_date: data.dueDate ?? existing.due_date,
     budget: data.budget === void 0 ? existing.budget : round(data.budget),
     currency: data.currency ?? existing.currency,
-    updated_at: now()
+    progress_percent: progress,
+    progress_updated_at: data.progressPercent === void 0 ? existing.progress_updated_at : timestamp,
+    updated_at: timestamp
   }, "project_id", data.projectId);
   await audit(env, actor, "PROJECT_UPDATED", "PROJECT", data.projectId, data);
   return { project: toApi(saved) };

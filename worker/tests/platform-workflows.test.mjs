@@ -108,3 +108,23 @@ test('primary manager can configure studio job types without changing historical
   assert.match(migration, /CREATE TABLE studio_job_types/);
   assert.match(migration, /EQUIPMENT_RENTAL/);
 });
+
+test('projects expose a persisted completion percentage across API and portals', async () => {
+  const [worker, app, styles, migration, baseline] = await Promise.all([
+    read('worker/src/index.js'),
+    read('frontend/app.js'),
+    read('frontend/styles.css'),
+    read('worker/migrations/0007_project_progress.sql'),
+    read('worker/schema/staging-baseline.sql')
+  ]);
+
+  assert.match(migration, /ALTER TABLE projects[\s\S]*progress_percent/);
+  assert.match(migration, /progress_updated_at/);
+  assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM/i);
+  assert.match(baseline, /progress_percent REAL NOT NULL DEFAULT 0/);
+  assert.match(worker, /progress_percent: progress/);
+  assert.match(worker, /averageProjectProgress/);
+  assert.match(app, /progressPercent: source\.progress/);
+  assert.match(app, /نسبة إتمام المشروع/);
+  assert.match(styles, /\.project-progress-track/);
+});

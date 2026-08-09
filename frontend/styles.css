@@ -1442,6 +1442,26 @@ button:disabled {
   background: var(--accent);
 }
 
+.project-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 17px;
+  color: var(--text-soft);
+  font-size: 10px;
+}
+
+.project-progress-head strong {
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-progress-track {
+  margin-top: 7px;
+}
+
 .execution-note,
 .review-note {
   margin: 13px 0 0 !important;

@@ -106,6 +106,8 @@ CREATE TABLE projects (
   due_date TEXT,
   budget REAL NOT NULL DEFAULT 0,
   currency TEXT NOT NULL DEFAULT 'EGP',
+  progress_percent REAL NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+  progress_updated_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -544,4 +546,5 @@ CREATE INDEX idx_approval_requests_archived_created
 INSERT OR IGNORE INTO d1_migrations(name) VALUES
   ('0004_governance_portals.sql'),
   ('0005_studio_job_types.sql'),
-  ('0006_approval_archiving.sql');
+  ('0006_approval_archiving.sql'),
+  ('0007_project_progress.sql');

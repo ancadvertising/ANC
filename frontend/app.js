@@ -339,12 +339,22 @@ function normalizeProject(row) {
     dueDate: row?.['Due Date'] || row?.dueDate || '',
     description: String(row?.Brief || row?.Description || row?.description || ''),
     progress: Number(row?.['Progress Percent'] || row?.progressPercent || row?.progress || 0),
+    progressUpdatedAt: row?.['Progress Updated At'] || row?.progressUpdatedAt || '',
     progressNote: String(row?.['Progress Details'] || row?.progressDetails || row?.progressNote || ''),
     deliveryLink: String(row?.['Delivery URL'] || row?.deliveryUrl || row?.deliveryLink || ''),
     archived: Boolean(row?.archived) || status === 'ARCHIVED' || status === 'CANCELLED',
     createdAt: row?.['Created At'] || row?.createdAt || '',
     updatedAt: row?.['Updated At'] || row?.updatedAt || ''
   };
+}
+
+function projectProgress(project) {
+  return Math.round(Math.min(100, Math.max(0, Number(project?.progress || 0))));
+}
+
+function averageProjectProgress(projects) {
+  if (!projects.length) return 0;
+  return Math.round(projects.reduce((total, project) => total + projectProgress(project), 0) / projects.length);
 }
 
 function normalizeApproval(row) {
@@ -613,7 +623,7 @@ function renderDashboard() {
   const liveMetrics = serverDashboard?.metrics || {};
   const metrics = [
     ['clients', 'العملاء النشطون', liveMetrics.activeClients ?? activeClients, state.clients.length ? `من إجمالي ${state.clients.length} عميل` : 'لا يوجد عملاء مسجلون'],
-    ['projects', 'المشروعات النشطة', liveMetrics.activeProjects ?? activeProjects, state.projects.length ? `من إجمالي ${state.projects.length} مشروع` : 'لا توجد مشروعات مسجلة'],
+    ['projects', 'المشروعات النشطة', liveMetrics.activeProjects ?? activeProjects, state.projects.length ? `متوسط الإنجاز ${UI.number(liveMetrics.averageProjectProgress ?? averageProjectProgress(visibleProjects))}%` : 'لا توجد مشروعات مسجلة'],
     ['finance', 'إجمالي الإيراد', money(liveMetrics.revenue || 0), `المحصّل ${money(liveMetrics.collected || 0)}`],
     ['approvals', 'طلبات تنتظر الاعتماد', pendingApprovals, currentRole === 'ASSISTANT_MANAGER' ? 'طلباتك لا تُطبق قبل الاعتماد' : 'راجعها قبل تنفيذ التغيير']
   ];
@@ -749,9 +759,11 @@ function clientProjectCard(project) {
         <div><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.description || 'لا يوجد وصف منشور للعميل.')}</p></div>
         <span class="status-badge" data-status="${recordStatus(project)}">${statusLabel(recordStatus(project))}</span>
       </div>
+      <div class="project-progress-head"><span>نسبة إتمام المشروع</span><strong>${projectProgress(project)}%</strong></div>
+      <div class="progress-track project-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${projectProgress(project)}" aria-label="نسبة إتمام المشروع"><span style="width: ${projectProgress(project)}%"></span></div>
       <div class="entity-meta">
         <div><span>مدير الحساب</span><strong>${escapeHtml(project.accountManager || 'فريق ANC')}</strong></div>
-        <div><span>نسبة الإنجاز</span><strong>${Number(project.progress || 0)}%</strong></div>
+        <div><span>آخر تحديث للإنجاز</span><strong>${formatDate(project.progressUpdatedAt || project.updatedAt)}</strong></div>
         <div><span>البداية</span><strong>${formatDate(project.startDate)}</strong></div>
         <div><span>موعد التسليم</span><strong>${formatDate(project.dueDate)}</strong></div>
       </div>
@@ -984,6 +996,8 @@ function projectCard(project) {
         <span class="status-badge" data-status="${recordStatus(project)}">${statusLabel(recordStatus(project))}</span>
       </div>
       ${pending ? '<p class="pending-change">يوجد طلب تعديل ينتظر اعتماد المدير الأساسي.</p>' : ''}
+      <div class="project-progress-head"><span>نسبة إتمام المشروع</span><strong>${projectProgress(project)}%</strong></div>
+      <div class="progress-track project-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${projectProgress(project)}" aria-label="نسبة إتمام المشروع"><span style="width: ${projectProgress(project)}%"></span></div>
       <div class="entity-meta">
         <div><span>الميزانية</span><strong>${money(project.budget, project.currency)}</strong></div>
         <div><span>مدير الحساب</span><strong>${escapeHtml(project.accountManager || 'غير محدد')}</strong></div>
@@ -1122,6 +1136,10 @@ function openEntityDialog(type, entityId = '') {
     : `إضافة ${isClient ? 'عميل جديد' : 'مشروع جديد'}`;
   dialogFields.innerHTML = isClient ? clientFormFields() : projectFormFields();
   if (record) fillEntityForm(record);
+  else if (!isClient) {
+    form.elements.progress.value = '0';
+    form.elements.priority.value = 'MEDIUM';
+  }
   dialog.showModal();
   setTimeout(() => dialog.querySelector('input, select, textarea')?.focus(), 40);
 }
@@ -1151,6 +1169,7 @@ function projectFormFields() {
     ${field('name', 'اسم المشروع', 'text', true, 'مثال: حملة صيف 2026')}
     ${selectField('status', 'الحالة', [['PLANNED', 'مخطط'], ['ACTIVE', 'نشط'], ['ON_HOLD', 'متوقف'], ['COMPLETED', 'مكتمل'], ['CANCELLED', 'ملغي']])}
     ${selectField('priority', 'الأولوية', [['LOW', 'منخفضة'], ['MEDIUM', 'متوسطة'], ['HIGH', 'عالية'], ['URGENT', 'عاجلة']])}
+    ${field('progress', 'نسبة إتمام المشروع %', 'number', true, '0', 'min="0" max="100" step="1"')}
     ${field('accountManager', 'مدير الحساب', 'text', false, 'المسؤول عن متابعة العميل')}
     ${field('budget', 'ميزانية المشروع', 'number', false, '0', 'min="0" step="0.01"')}
     ${selectField('currency', 'العملة', [['EGP', 'EGP - جنيه مصري'], ['USD', 'USD - دولار أمريكي'], ['SAR', 'SAR - ريال سعودي']])}
@@ -1291,7 +1310,7 @@ async function submitEntityForm() {
     dueDate: values.dueDate || '',
     description: values.description.trim(),
     archived: Boolean(existing?.archived),
-    progress: Number(existing?.progress || 0),
+    progress: Math.min(100, Math.max(0, Number(values.progress || 0))),
     createdAt: existing?.createdAt || now,
     updatedAt: now
   };
@@ -1335,6 +1354,7 @@ function serverPayload(entityType, entityId, action, payload) {
     currency: source.currency,
     startDate: source.startDate,
     dueDate: source.dueDate,
+    progressPercent: source.progress,
     description: source.description
   };
 }
