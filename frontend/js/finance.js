@@ -3,7 +3,7 @@
   const isManagement = () => {
     const user = window.ANC_CURRENT_USER || {};
     const role = String(user.role || '').toUpperCase();
-    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER'].includes(role);
+    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER','FINANCE'].includes(role);
   };
 
   function option(value, label, selected, extra) {
@@ -158,14 +158,14 @@
     const active = row.Active === true || row.Active === 1 || row.Active === '1' || String(row.Active).toLowerCase() === 'true';
     return active ? "<div class='table-actions'><button class='btn danger-button' data-account-delete='" + esc(row['Bank Account ID']) + "'>حذف آمن</button></div>" : UI.badge('INACTIVE');
   }
-  function invoiceActions(_, row) {
+  function invoiceActions(_, row, canManage) {
     const balance = Number(row['Balance Due'] || 0);
     const paid = Number(row['Paid Amount'] || 0);
     const cancelled = row.Status === 'CANCELLED';
     return "<div class='table-actions'>" +
       "<button class='btn' data-invoice-pdf='" + esc(row['Invoice ID']) + "'>PDF</button>" +
-      (balance > 0 && !cancelled ? "<button class='btn btn-primary' data-invoice-payment='" + esc(row['Invoice ID']) + "'>تسجيل دفع</button>" : '') +
-      (!cancelled ? "<button class='btn danger-button' data-invoice-delete='" + esc(row['Invoice ID']) + "'" + (paid > 0 ? " disabled title='لا يمكن حذف فاتورة لها مدفوعات'" : '') + ">حذف آمن</button>" : '') +
+      (canManage && balance > 0 && !cancelled ? "<button class='btn btn-primary' data-invoice-payment='" + esc(row['Invoice ID']) + "'>تسجيل دفع</button>" : '') +
+      (canManage && !cancelled ? "<button class='btn danger-button' data-invoice-delete='" + esc(row['Invoice ID']) + "'" + (paid > 0 ? " disabled title='لا يمكن حذف فاتورة لها مدفوعات'" : '') + ">حذف آمن</button>" : '') +
     "</div>";
   }
 
@@ -183,8 +183,9 @@
     });
   }
 
-  async function load() {
+  async function load(currentUser) {
     const canManage = isManagement();
+    const clientView = currentUser?.userType === 'CLIENT';
     const results = await Promise.all([
       API.get('invoices'),
       API.get('payments'),
@@ -208,9 +209,11 @@
         UI.metric('إجمالي الفواتير',UI.money(invoiceTotal)) +
         UI.metric('التحصيل',UI.money(paidTotal)) +
         UI.metric('المتبقي',UI.money(outstanding)) +
-        UI.metric('الرصيد البنكي',UI.money(accounts.reduce((sum,row) => sum + Number(row['Current Balance'] || 0),0))) +
+        (clientView
+          ? UI.metric('عدد الفواتير',UI.number(invoices.length),'الفواتير المرتبطة بحسابك فقط')
+          : UI.metric('الرصيد البنكي',UI.money(accounts.reduce((sum,row) => sum + Number(row['Current Balance'] || 0),0)))) +
       "</section>" +
-      "<section class='card'><div class='card-header'><h2>الحسابات البنكية</h2><div class='actions'><button class='btn' id='new-account'>حساب جديد</button>" +
+      (canManage ? "<section class='card'><div class='card-header'><h2>الحسابات البنكية</h2><div class='actions'><button class='btn' id='new-account'>حساب جديد</button>" +
         (accounts.length ? "<button class='btn btn-primary' id='new-deposit'>إيداع</button>" : '') +
       "</div></div>" +
       UI.table(accounts,[
@@ -221,8 +224,8 @@
         {key:'Active',label:'نشط',render:UI.badge},
         {key:'Bank Account ID',label:'الإجراءات',render:accountActions}
       ]) +
-      "</section>" +
-      "<section class='card'><div class='card-header'><div><h2>الفواتير</h2><p class='muted'>الفاتورة تُنشأ من البنود غير المفوترة داخل مشروع واحد، وتعرض اسم العميل والمشروع.</p></div><button class='btn btn-primary' id='new-invoice'>فاتورة مشروع جديدة</button></div>" +
+      "</section>" : '') +
+      "<section class='card'><div class='card-header'><div><h2>الفواتير</h2><p class='muted'>" + (clientView ? 'فواتير مشروعاتك والمدفوع والمتبقي لكل فاتورة.' : 'الفاتورة تُنشأ من البنود غير المفوترة داخل مشروع واحد، وتعرض اسم العميل والمشروع.') + "</p></div>" + (canManage ? "<button class='btn btn-primary' id='new-invoice'>فاتورة مشروع جديدة</button>" : '') + "</div>" +
       UI.table(invoices,[
         {key:'Invoice Number',label:'رقم الفاتورة'},
         {key:'Client Name',label:'العميل'},
@@ -232,10 +235,10 @@
         {key:'Paid Amount',label:'المدفوع',render:UI.money},
         {key:'Balance Due',label:'المتبقي',render:UI.money},
         {key:'Status',label:'الحالة',render:UI.badge},
-        {key:'Invoice ID',label:'الإجراءات',render:invoiceActions}
+        {key:'Invoice ID',label:'الإجراءات',render:(value,row) => invoiceActions(value,row,canManage)}
       ]) +
       "</section>" +
-      "<section class='grid two'><article class='card'><div class='card-header'><h2>المدفوعات</h2></div>" +
+      "<section class='grid " + (canManage ? 'two' : 'one') + "'><article class='card'><div class='card-header'><h2>المدفوعات</h2></div>" +
       UI.table(payments,[
         {key:'Payment Date',label:'التاريخ',render:UI.date},
         {key:'Client Name',label:'العميل'},
@@ -243,7 +246,7 @@
         {key:'Amount',label:'القيمة',render:UI.money},
         {key:'Method',label:'الطريقة'}
       ]) +
-      "</article><article class='card'><div class='card-header'><h2>المصروفات</h2></div>" +
+      "</article>" + (canManage ? "<article class='card'><div class='card-header'><h2>المصروفات</h2></div>" +
       UI.table(expenses,[
         {key:'Expense Date',label:'التاريخ',render:UI.date},
         {key:'Category',label:'التصنيف'},
@@ -251,15 +254,8 @@
         {key:'Vendor',label:'المورد'},
         {key:'Expense ID',label:'الإجراءات',render:expenseActions}
       ]) +
-      "</article></section>"
+      "</article>" : '') + "</section>"
     );
-
-    if (!canManage) {
-      document.querySelector('#new-account')?.closest('section')?.remove();
-      document.querySelector('#new-invoice')?.remove();
-      const expenseCard = Array.from(document.querySelectorAll('.grid.two .card')).find(card => card.querySelector('h2')?.textContent.trim() === 'المصروفات');
-      expenseCard?.remove();
-    }
 
     const reload = () => load();
     const expenseCard = Array.from(document.querySelectorAll('.grid.two .card')).find(card => card.querySelector('h2')?.textContent.trim() === 'المصروفات');
@@ -401,5 +397,71 @@
     }));
   }
 
+  async function loadBanking() {
+    if (!isManagement()) {
+      UI.setMain("<section class='card'><div class='alert warning'><strong>هذه الصفحة مخصصة للإدارة المالية.</strong><br>لا يعرض النظام أرصدة البنك أو حركاته لهذا الدور.</div></section>");
+      return;
+    }
+    const [accountData, transactionData] = await Promise.all([
+      API.get('bank.accounts'),
+      API.get('bank.transactions')
+    ]);
+    const accounts = accountData.accounts || [];
+    const transactions = UI.filterRows(transactionData.transactions || [], ['Transaction Date', 'Created At', 'Updated At']);
+    const creditTypes = /DEPOSIT|CREDIT|REVERSAL/i;
+    const debitTypes = /DEBIT|EXPENSE|AD_SPEND/i;
+    const credits = transactions.filter(row => creditTypes.test(String(row['Transaction Type'] || ''))).reduce((sum,row) => sum + Number(row.Amount || 0),0);
+    const debits = transactions.filter(row => debitTypes.test(String(row['Transaction Type'] || '')) && !creditTypes.test(String(row['Transaction Type'] || ''))).reduce((sum,row) => sum + Number(row.Amount || 0),0);
+    const currentBalance = accounts.filter(row => String(row.Active).toLowerCase() !== 'false').reduce((sum,row) => sum + Number(row['Current Balance'] || 0),0);
+
+    UI.setMain(
+      "<section class='grid metrics'>" +
+        UI.metric('الرصيد الحالي',UI.money(currentBalance)) +
+        UI.metric('إجمالي الإضافات',UI.money(credits)) +
+        UI.metric('إجمالي الخصومات',UI.money(debits)) +
+        UI.metric('عدد الحركات',UI.number(transactions.length)) +
+      "</section>" +
+      "<section class='card'><div class='card-header'><div><h2>الحسابات البنكية</h2><p class='muted'>الأرصدة الفعلية التي تغطي تكاليف الإعلانات والمصروفات.</p></div><div class='actions'><button class='btn' id='new-account'>حساب جديد</button>" +
+        (accounts.length ? "<button class='btn btn-primary' id='new-deposit'>إيداع</button>" : '') +
+      "</div></div>" + UI.table(accounts,[
+        {key:'Account Name',label:'الحساب'},
+        {key:'Bank Name',label:'البنك'},
+        {key:'Account Number Masked',label:'الرقم'},
+        {key:'Opening Balance',label:'الرصيد الافتتاحي',render:(value,row) => UI.money(value,row)},
+        {key:'Current Balance',label:'الرصيد الحالي',render:(value,row) => UI.money(value,row)},
+        {key:'Active',label:'نشط',render:UI.badge},
+        {key:'Bank Account ID',label:'الإجراءات',render:accountActions}
+      ],{detailTitle:'تفاصيل الحساب البنكي'}) + "</section>" +
+      "<section class='card'><div class='card-header'><div><h2>حركات البنك</h2><p class='muted'>سجل غير قابل للمحو؛ الإلغاء ينشئ حركة عكسية ويحافظ على الأثر المحاسبي.</p></div></div>" + UI.table(transactions,[
+        {key:'Transaction Date',label:'التاريخ',render:UI.date},
+        {key:'Account Name',label:'الحساب'},
+        {key:'Transaction Type',label:'النوع',render:UI.badge},
+        {key:'Amount',label:'القيمة',render:(value,row) => UI.money(value,row)},
+        {key:'Description',label:'البيان'},
+        {key:'Reference Type',label:'المرجع'},
+        {key:'Status',label:'الحالة',render:UI.badge}
+      ],{detailTitle:'تفاصيل الحركة البنكية'}) + "</section>"
+    );
+
+    const reload = () => loadBanking();
+    document.querySelector('#new-account')?.addEventListener('click', () => openSimple('حساب بنكي جديد',accountForm(),'bank.accounts',reload));
+    document.querySelector('#new-deposit')?.addEventListener('click', () => openSimple('تسجيل إيداع',depositForm(accounts),'bank.deposit',reload));
+    document.querySelectorAll('[data-account-delete]').forEach(button => button.addEventListener('click',async event => {
+      event.stopPropagation();
+      if (!confirm('هل تريد إرسال طلب الحذف الآمن لهذا الحساب؟')) return;
+      try {
+        button.disabled = true;
+        const result = await UI.requestApproval({entityType:'BANK_ACCOUNT',entityId:button.dataset.accountDelete,action:'DELETE',payload:{reason:'Safe delete requested from banking page'},description:'طلب حذف آمن لحساب بنكي مع الاحتفاظ بالحركات'});
+        UI.toast(result.applied ? 'تم تنفيذ العملية مباشرة.' : 'تم إرسال العملية للاعتماد.');
+        if (result.applied) await reload();
+      } catch (error) {
+        UI.toast(error.message,'error');
+      } finally {
+        button.disabled = false;
+      }
+    }));
+  }
+
   ANCPageModules.finance = { load };
+  ANCPageModules.banking = { load: loadBanking };
 })();

@@ -4,6 +4,12 @@
   const esc = UI.escape;
   const truthy = value => value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
 
+  function isManagement() {
+    const user = window.ANC_CURRENT_USER || {};
+    const role = String(user.role || '').toUpperCase();
+    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER','ACCOUNT_MANAGER'].includes(role);
+  }
+
   function option(value, label, selected, extra) {
     return "<option value='" + esc(value) + "'" + (selected ? " selected" : "") + (extra || '') + ">" + esc(label) + "</option>";
   }
@@ -100,14 +106,20 @@
   }
 
   function openEditor(ad, context, reload) {
-    const modal = UI.modal(ad ? 'تعديل الإعلان' : 'إعلان ممول جديد', adForm(ad, context.clients, context.projects, context.accounts));
+    const operationalOnly = !isManagement();
+    const formHtml = operationalOnly
+      ? `<form class="form-grid"><div class="field"><label>الإعلان</label><input value="${esc(ad?.['Ad Name'] || '')}" disabled></div><div class="field"><label>الميزانية اليومية</label><input value="${esc(ad?.['Daily Rate'] || 0)}" disabled></div><div class="field"><label>الحالة</label><select name="status">${['DRAFT','ACTIVE','ON_AIR','PAUSED','COMPLETED'].map(value => `<option${value === ad?.Status ? ' selected' : ''}>${value}</option>`).join('')}</select></div><div class="field wide"><label>تفاصيل ومتطلبات التنفيذ</label><textarea name="clientRequirements">${esc(ad?.['Client Requirements'] || '')}</textarea></div><div class="wide actions"><button class="btn btn-primary" type="submit">حفظ تحديث التنفيذ</button></div></form>`
+      : adForm(ad, context.clients, context.projects, context.accounts);
+    const modal = UI.modal(ad ? 'تعديل الإعلان' : 'إعلان ممول جديد', formHtml);
     const form = modal.querySelector('form');
-    bindProjectSelect(form);
-    bindPreview(modal, form);
+    if (!operationalOnly) {
+      bindProjectSelect(form);
+      bindPreview(modal, form);
+    }
     form.addEventListener('submit', event => {
       event.preventDefault();
       UI.submit(form, async data => {
-        data.autoDebit = form.elements.autoDebit.checked;
+        if (!operationalOnly) data.autoDebit = form.elements.autoDebit.checked;
         if (ad) {
           data.adId = ad['Ad ID'];
           await API.put('ads', data);
@@ -128,8 +140,8 @@
     return [
       "<div class='table-actions'>",
       !archived && !cancelled ? "<button class='btn' data-ad-edit='" + esc(row['Ad ID']) + "'>تعديل</button>" : '',
-      "<button class='btn' data-ad-archive='" + esc(row['Ad ID']) + "' data-archived='" + (archived ? '0' : '1') + "'>" + (archived ? 'استعادة' : 'أرشفة') + "</button>",
-      !cancelled ? "<button class='btn danger-button' data-ad-delete='" + esc(row['Ad ID']) + "'>حذف آمن</button>" : '',
+      isManagement() ? "<button class='btn' data-ad-archive='" + esc(row['Ad ID']) + "' data-archived='" + (archived ? '0' : '1') + "'>" + (archived ? 'استعادة' : 'أرشفة') + "</button>" : '',
+      isManagement() && !cancelled ? "<button class='btn danger-button' data-ad-delete='" + esc(row['Ad ID']) + "'>حذف آمن</button>" : '',
       "</div>"
     ].join('');
   }
@@ -138,7 +150,7 @@
     const query = showArchived ? { includeArchived:true } : {};
     const results = await Promise.all([
       API.get('ads', query),
-      API.get('ads.settings'),
+      isManagement() ? API.get('ads.settings') : Promise.resolve({ settings:{} }),
       API.get('clients').catch(() => ({ clients:[] })),
       API.get('projects').catch(() => ({ projects:[] })),
       API.get('bank.accounts').catch(() => ({ accounts:[] }))
@@ -153,13 +165,13 @@
     UI.setMain(
       "<section class='grid metrics'>" +
         UI.metric('عدد الإعلانات', UI.number(ads.length)) +
-        UI.metric('قيمة البيع', UI.money(ads.reduce((sum,row) => sum + Number(row['Sale Price'] || 0),0))) +
-        UI.metric('الربح', UI.money(ads.reduce((sum,row) => sum + Number(row.Profit || 0),0))) +
-        UI.metric('تحت حد الربح', UI.number(ads.filter(row => Number(row.Profit) < Number(row['Minimum Profit Amount']) || Number(row['Profit Margin']) < Number(row['Minimum Profit Margin'])).length)) +
+        (isManagement()
+          ? UI.metric('قيمة البيع', UI.money(ads.reduce((sum,row) => sum + Number(row['Sale Price'] || 0),0))) + UI.metric('الربح', UI.money(ads.reduce((sum,row) => sum + Number(row.Profit || 0),0))) + UI.metric('تحت حد الربح', UI.number(ads.filter(row => Number(row.Profit) < Number(row['Minimum Profit Amount']) || Number(row['Profit Margin']) < Number(row['Minimum Profit Margin'])).length))
+          : UI.metric('قيد التشغيل', UI.number(ads.filter(row => ['ACTIVE','ON_AIR'].includes(row.Status)).length)) + UI.metric('الإنفاق المخطط', UI.money(ads.reduce((sum,row) => sum + Number(row['Base Spend'] || 0),0))) + UI.metric('مكتمل', UI.number(ads.filter(row => row.Status === 'COMPLETED').length))) +
       "</section>" +
       "<section class='card'><div class='card-header'><div><h2>الإعلانات الممولة</h2><p class='muted'>كل إعلان مرتبط بعميل ومشروع، مع تعديل وأرشفة وإلغاء موثق دون فقد القيود المالية.</p></div><div class='actions'>" +
         "<button class='btn' id='toggle-ad-archive'>" + (showArchived ? 'إخفاء الأرشيف' : 'عرض الأرشيف') + "</button>" +
-        (context.clients.length && context.projects.length ? "<button class='btn btn-primary' id='new-ad'>إعلان جديد</button>" : '') +
+        (isManagement() && context.clients.length && context.projects.length ? "<button class='btn btn-primary' id='new-ad'>إعلان جديد</button>" : '') +
       "</div></div>" +
       UI.table(ads, [
         { key:'Ad Name', label:'الإعلان' },
@@ -167,8 +179,7 @@
         { key:'Project Name', label:'المشروع' },
         { key:'Platform', label:'المنصة' },
         { key:'Daily Rate', label:'يوميًا', render:UI.money },
-        { key:'Sale Price', label:'سعر البيع', render:UI.money },
-        { key:'Profit', label:'الربح', render:UI.money },
+        ...(isManagement() ? [{ key:'Sale Price', label:'سعر البيع', render:UI.money },{ key:'Profit', label:'الربح', render:UI.money }] : []),
         { key:'Status', label:'الحالة', render:UI.badge },
         { key:'Ad ID', label:'الإجراءات', render:actions }
       ]) +

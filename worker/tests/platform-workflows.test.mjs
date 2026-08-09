@@ -34,8 +34,8 @@ test('frontend wires live users, ads, finance, settings and documents modules', 
   ]);
   assert.match(index, /\/js\/settings\.js/);
   assert.match(index, /\/js\/documents\.js/);
-  assert.match(app, /renderLiveModule\('settings'\)/);
-  assert.match(app, /renderLiveModule\('documents'\)/);
+  assert.match(app, /settings:\s*'settings'/);
+  assert.match(app, /documents:\s*'documents'/);
   assert.match(api, /delete: \(route, data = \{\}\)/);
   assert.match(users, /users\.permissions/);
   assert.match(users, /API\.delete\('users'/);
@@ -44,6 +44,34 @@ test('frontend wires live users, ads, finance, settings and documents modules', 
   assert.match(finance, /invoices\.project/);
   assert.match(settings, /system\.settings/);
   assert.match(documents, /API\.post\('documents'/);
+});
+
+test('every navigation page resolves to a native or connected live module', async () => {
+  const [app, finance, reports, worker] = await Promise.all([
+    read('frontend/app.js'),
+    read('frontend/js/finance.js'),
+    read('frontend/js/reports.js'),
+    read('worker/src/index.js')
+  ]);
+
+  for (const [page, moduleName] of Object.entries({
+    orders:'requests', ads:'ads', studio:'studio', tasks:'operations', finance:'finance',
+    banking:'banking', reports:'reports', documents:'documents', employees:'users',
+    audit:'audit', settings:'settings'
+  })) {
+    assert.match(app, new RegExp(`${page}:\\s*'${moduleName}'`), `${page} must resolve to ${moduleName}`);
+  }
+
+  for (const alias of ['adminportal','clientportal','employeeportal','operations','users','profitability','billing','status','alerts']) {
+    assert.match(app, new RegExp(`${alias}:\\s*'`), `${alias} legacy route must redirect to a live page`);
+  }
+
+  assert.match(app, /currentRoute === 'finance'[\s\S]{0,300}currentRole === 'CLIENT'/, 'client finance must load before the client fallback');
+  assert.match(finance, /ANCPageModules\.banking\s*=\s*\{\s*load:\s*loadBanking/);
+  assert.match(reports, /audit:\{load:audit\}/);
+  assert.match(worker, /CLIENT:\s*\{[^}]*FINANCE:\s*\["VIEW",\s*"PRINT"\]/);
+  assert.match(worker, /actor\.userType === "CLIENT" && invoice\.client_id !== actor\.clientId/);
+  assert.match(worker, /JOIN bank_accounts a ON a\.bank_account_id=t\.bank_account_id/);
 });
 
 test('all extensionless route shells match the application shell', async () => {

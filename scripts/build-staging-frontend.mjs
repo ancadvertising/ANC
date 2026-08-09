@@ -53,7 +53,7 @@ manifest.shortcuts = (manifest.shortcuts || []).map((shortcut) => ({
 }));
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
-const version = process.env.GITHUB_SHA ? `3.1.4-staging.${process.env.GITHUB_SHA.slice(0, 7)}` : '3.1.4-staging';
+const version = process.env.GITHUB_SHA ? `3.2.0-staging.${process.env.GITHUB_SHA.slice(0, 7)}` : '3.2.0-staging';
 const config = `window.APP_CONFIG = Object.freeze({
   API_BASE_URL: '${apiUrl}',
   BASE_PATH: '${basePath}',

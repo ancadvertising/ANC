@@ -5,7 +5,7 @@
   function isManagement() {
     const user = window.ANC_CURRENT_USER || {};
     const role = String(user.role || '').toUpperCase();
-    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER'].includes(role);
+    return user.userType === 'ADMIN' || ['ADMIN','MANAGER','ASSISTANT_MANAGER','ACCOUNT_MANAGER'].includes(role);
   }
 
   function option(value,label,selected) {

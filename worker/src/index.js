@@ -48,7 +48,7 @@ __name(cors, "cors");
 // src/constants.js
 var APP = Object.freeze({
   name: "ANC Marketing Agency ERP",
-  version: "3.1.4",
+  version: "3.2.0",
   currency: "EGP",
   timezone: "Africa/Cairo"
 });
@@ -282,7 +282,7 @@ var ROLE_RULES = Object.freeze({
   STUDIO: { TASKS: ["VIEW", "EDIT"], STUDIO: ["VIEW", "EDIT", "CREATE"], PORTALS: ["VIEW", "EDIT"] },
   EMPLOYEE: { PORTALS: ["VIEW", "EDIT"], TASKS: ["VIEW", "EDIT"] },
   VIEWER: { DASHBOARD: ["VIEW"] },
-  CLIENT: { PORTALS: ["VIEW", "CREATE", "EDIT"] }
+  CLIENT: { PORTALS: ["VIEW", "CREATE", "EDIT"], FINANCE: ["VIEW", "PRINT"] }
 });
 async function authenticate(env, token) {
   const claims = await verifyGoogleIdToken(token, env.GOOGLE_CLIENT_ID);
@@ -1388,7 +1388,7 @@ async function employeePortal({ env, actor }) {
     first(env, "SELECT * FROM employees WHERE employee_id = ?", [actor.employeeId]),
     all(env, "SELECT * FROM tasks WHERE employee_id = ? OR assigned_email = ? COLLATE NOCASE ORDER BY created_at DESC", [actor.employeeId, actor.email]),
     all(env, "SELECT * FROM task_work_updates WHERE employee_id = ? ORDER BY created_at DESC", [actor.employeeId]),
-    all(env, "SELECT * FROM studio_jobs WHERE employee_id = ? ORDER BY created_at DESC", [actor.employeeId]),
+    all(env, "SELECT DISTINCT j.* FROM studio_jobs j LEFT JOIN studio_job_assignments a ON a.studio_job_id=j.studio_job_id WHERE j.employee_id=? OR a.employee_id=? ORDER BY j.created_at DESC", [actor.employeeId, actor.employeeId]),
     all(env, "SELECT * FROM timesheets WHERE employee_id = ? ORDER BY work_date DESC", [actor.employeeId])
   ]);
   return { employee: toApi(employee), tasks: toApiList(tasks), workUpdates: toApiList(updates), studioJobs: toApiList(jobs), timesheets: toApiList(timesheets) };
@@ -1513,7 +1513,9 @@ async function listBankAccounts({ env }) {
 }
 __name(listBankAccounts, "listBankAccounts");
 async function listBankTransactions({ env, data }) {
-  const rows = data.bankAccountId ? await all(env, "SELECT * FROM bank_transactions WHERE bank_account_id = ? ORDER BY transaction_date DESC", [data.bankAccountId]) : await all(env, "SELECT * FROM bank_transactions ORDER BY transaction_date DESC");
+  const rows = data.bankAccountId
+    ? await all(env, "SELECT t.*,a.account_name,a.bank_name FROM bank_transactions t JOIN bank_accounts a ON a.bank_account_id=t.bank_account_id WHERE t.bank_account_id = ? ORDER BY t.transaction_date DESC", [data.bankAccountId])
+    : await all(env, "SELECT t.*,a.account_name,a.bank_name FROM bank_transactions t JOIN bank_accounts a ON a.bank_account_id=t.bank_account_id ORDER BY t.transaction_date DESC");
   return { transactions: toApiList(rows) };
 }
 __name(listBankTransactions, "listBankTransactions");
@@ -2911,6 +2913,9 @@ async function createInvoicePdf({ env, actor, data }) {
     all(env, "SELECT * FROM settings")
   ]);
   if (!invoice) throw new ApiError("INVOICE_NOT_FOUND", "الفاتورة غير موجودة.", {}, 404);
+  if (actor.userType === "CLIENT" && invoice.client_id !== actor.clientId) {
+    throw new ApiError("INVOICE_NOT_FOUND", "الفاتورة غير موجودة.", {}, 404);
+  }
   const config = { ...DEFAULT_SYSTEM_SETTINGS, ...settingsObject(settingsRows) };
   const pdf = await buildInvoicePdf({ invoice, items, payments, settings: config });
   const key = "invoices/" + invoice.invoice_id + ".pdf";

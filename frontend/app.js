@@ -110,6 +110,32 @@ const pageMetadata = {
   settings: { title: 'الإعدادات', eyebrow: 'System' }
 };
 
+const routeAliases = Object.freeze({
+  adminportal: 'dashboard',
+  clientportal: 'dashboard',
+  employeeportal: 'dashboard',
+  operations: 'tasks',
+  users: 'employees',
+  profitability: 'reports',
+  billing: 'finance',
+  status: 'settings',
+  alerts: 'dashboard'
+});
+
+const liveModuleRoutes = Object.freeze({
+  orders: 'requests',
+  ads: 'ads',
+  studio: 'studio',
+  tasks: 'operations',
+  finance: 'finance',
+  banking: 'banking',
+  reports: 'reports',
+  documents: 'documents',
+  employees: 'users',
+  audit: 'audit',
+  settings: 'settings'
+});
+
 const moduleMaps = {
   orders: [
     ['projects', 'الارتباط بالمشروع', 'كل طلب ينتمي لعميل ومشروع محددين.'],
@@ -220,6 +246,16 @@ const roleRoutes = Object.freeze({
   ASSISTANT_MANAGER: Object.keys(pageMetadata),
   EMPLOYEE: ['dashboard', 'tasks', 'studio', 'ads'],
   CLIENT: ['dashboard', 'projects', 'orders', 'finance']
+});
+
+const employeeRoleRoutes = Object.freeze({
+  ACCOUNT_MANAGER: ['dashboard', 'clients', 'projects', 'orders', 'ads', 'studio', 'tasks'],
+  FINANCE: ['dashboard', 'finance', 'banking', 'reports'],
+  MEDIA_BUYER: ['dashboard', 'tasks', 'ads'],
+  CREATIVE: ['dashboard', 'tasks', 'studio'],
+  STUDIO: ['dashboard', 'tasks', 'studio'],
+  VIEWER: ['dashboard'],
+  EMPLOYEE: ['dashboard', 'tasks']
 });
 
 let currentUser = null;
@@ -338,15 +374,32 @@ async function loadProductionState() {
   employeePortal = null;
 
   if (currentRole === 'CLIENT') {
-    portalData = await ANCAuth.request('client.portal', 'GET', {});
+    const [clientPortalResult, requestResult] = await Promise.all([
+      ANCAuth.request('client.portal', 'GET', {}),
+      ANCAuth.request('service.requests', 'GET', {}).catch(() => ({ requests: [] }))
+    ]);
+    portalData = { ...clientPortalResult, requests: requestResult?.requests || [] };
+    window.ANC_PORTAL_DATA = portalData;
     state.clients = portalData?.client ? [normalizeClient(portalData.client)] : [];
     state.projects = (portalData?.projects || []).map(normalizeProject);
     return;
   }
 
   if (currentRole === 'EMPLOYEE') {
-    employeePortal = await ANCAuth.request('employee.portal', 'GET', {});
+    const employeeRole = String(currentUser?.role || 'EMPLOYEE').toUpperCase();
+    const canReadCrm = employeeRole === 'ACCOUNT_MANAGER';
+    const canReadDashboard = ['ACCOUNT_MANAGER', 'FINANCE', 'VIEWER'].includes(employeeRole);
+    const [employeePortalResult, dashboardResult, clientsResult, projectsResult] = await Promise.all([
+      ANCAuth.request('employee.portal', 'GET', {}),
+      canReadDashboard ? ANCAuth.request('dashboard', 'GET', {}).catch(() => null) : Promise.resolve(null),
+      canReadCrm ? ANCAuth.request('clients', 'GET', {}).catch(() => ({ clients: [] })) : Promise.resolve({ clients: [] }),
+      canReadCrm ? ANCAuth.request('projects', 'GET', {}).catch(() => ({ projects: [] })) : Promise.resolve({ projects: [] })
+    ]);
+    employeePortal = employeePortalResult;
+    serverDashboard = dashboardResult;
+    state.clients = (clientsResult?.clients || []).map(normalizeClient);
     state.projects = (employeePortal?.tasks || []).map(normalizeProject);
+    if (canReadCrm) state.projects = (projectsResult?.projects || []).map(normalizeProject);
     return;
   }
 
@@ -367,9 +420,7 @@ function allowedRoutes() {
   if (currentRole !== 'EMPLOYEE') routes = [...(roleRoutes[currentRole] || roleRoutes.EMPLOYEE)];
   else {
     const role = String(currentUser?.role || '').toUpperCase();
-    if (role === 'MEDIA_BUYER') routes = ['dashboard', 'tasks', 'ads'];
-    else if (role === 'CREATIVE' || role === 'STUDIO') routes = ['dashboard', 'tasks', 'studio'];
-    else routes = ['dashboard', 'tasks'];
+    routes = [...(employeeRoleRoutes[role] || employeeRoleRoutes.EMPLOYEE)];
   }
   const portal = ['PRIMARY_MANAGER','ASSISTANT_MANAGER'].includes(currentRole) ? 'ADMIN' : currentRole === 'CLIENT' ? 'CLIENT' : 'EMPLOYEE';
   const policies = new Map(pagePolicies.filter(policy => policy.Portal === portal).map(policy => [policy['Page Key'], policy]));
@@ -383,7 +434,7 @@ function isRouteAllowed(route) {
 }
 
 function canManageRecords() {
-  return currentRole === 'PRIMARY_MANAGER' || currentRole === 'ASSISTANT_MANAGER';
+  return currentRole === 'PRIMARY_MANAGER' || currentRole === 'ASSISTANT_MANAGER' || String(currentUser?.role || '').toUpperCase() === 'ACCOUNT_MANAGER';
 }
 
 function canReviewApprovals() {
@@ -403,7 +454,8 @@ function routeFromLocation() {
   const relativePath = APP_BASE_PATH !== '/' && location.pathname.startsWith(APP_BASE_PATH)
     ? location.pathname.slice(APP_BASE_PATH.length)
     : location.pathname.replace(/^\/+/, '');
-  const route = relativePath.split('/').filter(Boolean)[0] || 'dashboard';
+  const requestedRoute = relativePath.split('/').filter(Boolean)[0] || 'dashboard';
+  const route = routeAliases[requestedRoute] || requestedRoute;
   return pageMetadata[route] && isRouteAllowed(route) ? route : 'dashboard';
 }
 
@@ -509,7 +561,14 @@ function renderLiveModule(moduleName) {
     return;
   }
   content.innerHTML = window.UI?.loading ? UI.loading() : '<div class="skeleton"></div>';
-  Promise.resolve(module.load(currentUser)).catch((error) => {
+  const context = Object.freeze({
+    route: currentRoute,
+    role: currentRole,
+    portalData,
+    employeePortal,
+    dashboard: serverDashboard
+  });
+  Promise.resolve(module.load(currentUser, context)).catch((error) => {
     if (window.UI?.error) UI.error(error);
     else content.innerHTML = emptyState('alerts', 'تعذر تحميل الوحدة', error.message || 'حدث خطأ غير متوقع.', 'العودة للرئيسية', 'go-dashboard');
   });
@@ -521,6 +580,7 @@ function renderPage() {
     history.replaceState({}, '', routePath('dashboard'));
   }
   window.UI?.mountDateFilter?.(currentRole, () => renderPage());
+  window.ANC_CURRENT_ROUTE = currentRoute;
   refreshPageAccess();
   setHeader();
   renderNavigation();
@@ -531,17 +591,11 @@ function renderPage() {
   else if (currentRoute === 'projects' && currentRole === 'CLIENT') content.innerHTML = renderClientProjects();
   else if (currentRoute === 'projects') content.innerHTML = renderProjects();
   else if (currentRoute === 'approvals') content.innerHTML = renderApprovals();
-  else if (currentRoute === 'documents') renderLiveModule('documents');
-  else if (currentRoute === 'tasks' && currentRole === 'EMPLOYEE') content.innerHTML = renderEmployeeTasks();
-  else if (currentRoute === 'orders') renderLiveModule('requests');
+  else if (currentRoute === 'documents') renderLiveModule(liveModuleRoutes.documents);
+  else if (currentRoute === 'orders') renderLiveModule(liveModuleRoutes.orders);
+  else if (currentRoute === 'finance') renderLiveModule(liveModuleRoutes.finance);
   else if (currentRole === 'CLIENT') content.innerHTML = renderClientModule(currentRoute);
-  else if (currentRoute === 'tasks') renderLiveModule('operations');
-  else if (currentRoute === 'ads') renderLiveModule('ads');
-  else if (currentRoute === 'studio') renderLiveModule('studio');
-  else if (currentRoute === 'finance' || currentRoute === 'banking') renderLiveModule('finance');
-  else if (currentRoute === 'reports') renderLiveModule('reports');
-  else if (currentRoute === 'employees') renderLiveModule('users');
-  else if (currentRoute === 'settings') renderLiveModule('settings');
+  else if (liveModuleRoutes[currentRoute]) renderLiveModule(liveModuleRoutes[currentRoute]);
   else content.innerHTML = renderModuleMap(currentRoute);
   queueMicrotask(() => window.ANC_APPLY_PAGE_ACCESS?.(content));
 }
@@ -556,25 +610,25 @@ function renderDashboard() {
   const activeClients = visibleClients.filter((client) => client.status === 'ACTIVE' && !client.archived).length;
   const activeProjects = visibleProjects.filter((project) => project.status === 'ACTIVE' && !project.archived).length;
   const pendingApprovals = visibleApprovals.filter((request) => request.status === 'PENDING').length;
-  const totalBudget = visibleProjects.filter((project) => !project.archived).reduce((sum, project) => sum + Number(project.budget || 0), 0);
+  const liveMetrics = serverDashboard?.metrics || {};
   const metrics = [
-    ['clients', 'العملاء النشطون', activeClients, state.clients.length ? `من إجمالي ${state.clients.length} عميل` : 'ابدأ بإضافة أول عميل'],
-    ['projects', 'المشروعات النشطة', activeProjects, state.projects.length ? `من إجمالي ${state.projects.length} مشروع` : 'لم تُسجل مشروعات بعد'],
-    ['approvals', 'طلبات تنتظر الاعتماد', pendingApprovals, currentRole === 'ASSISTANT_MANAGER' ? 'طلباتك لا تُطبق قبل الاعتماد' : 'راجعها قبل تنفيذ التغيير'],
-    ['finance', 'ميزانيات المشروعات', money(totalBudget), 'تظهر للإدارة فقط']
+    ['clients', 'العملاء النشطون', liveMetrics.activeClients ?? activeClients, state.clients.length ? `من إجمالي ${state.clients.length} عميل` : 'لا يوجد عملاء مسجلون'],
+    ['projects', 'المشروعات النشطة', liveMetrics.activeProjects ?? activeProjects, state.projects.length ? `من إجمالي ${state.projects.length} مشروع` : 'لا توجد مشروعات مسجلة'],
+    ['finance', 'إجمالي الإيراد', money(liveMetrics.revenue || 0), `المحصّل ${money(liveMetrics.collected || 0)}`],
+    ['approvals', 'طلبات تنتظر الاعتماد', pendingApprovals, currentRole === 'ASSISTANT_MANAGER' ? 'طلباتك لا تُطبق قبل الاعتماد' : 'راجعها قبل تنفيذ التغيير']
   ];
 
   return `
     ${rolePreviewBanner()}
     <section class="hero-grid">
       <article class="hero-card">
-        <span class="hero-kicker">${svg('dashboard')} الهيكل التشغيلي الجديد</span>
-        <h2>كل شغل الشركة يبدأ من عميل، ثم مشروع، ثم طلب مستقل.</h2>
-        <p>بهذا الربط يمكن فوترتك على مشروع واحد، متابعة ربح كل طلب، وعرض البيانات المناسبة فقط لكل موظف أو عميل.</p>
+        <span class="hero-kicker">${svg('dashboard')} ملخص الشركة المباشر</span>
+        <h2>العملاء والمشروعات والتنفيذ والحسابات في لوحة واحدة.</h2>
+        <p>هذه المؤشرات محسوبة من بيانات النظام الحالية وتتغير فور تسجيل الفواتير والمدفوعات والمصروفات والمهام.</p>
       </article>
       <div class="hero-side">
-        <article class="pulse-card"><span>حالة النسخة</span><strong>جاهزة للاختبار</strong><small>واجهة مستقلة عن Apps Script وقابلة للتثبيت</small></article>
-        <article class="pulse-card"><span>الخطوة الحالية</span><strong>CRM + Projects</strong><small>تثبيت الأساس قبل الطلبات والحسابات</small></article>
+        <article class="pulse-card"><span>صافي الربح</span><strong>${money(liveMetrics.netProfit || 0)}</strong><small>هامش ${UI.number(liveMetrics.profitMargin || 0)}%</small></article>
+        <article class="pulse-card"><span>تنبيهات التشغيل</span><strong>${UI.number((liveMetrics.lowProfitAds || 0) + (liveMetrics.overdueTasks || 0))}</strong><small>${UI.number(liveMetrics.lowProfitAds || 0)} إعلان منخفض الربح · ${UI.number(liveMetrics.overdueTasks || 0)} مهمة متأخرة</small></article>
       </div>
     </section>
 
@@ -646,6 +700,9 @@ function renderClientDashboard() {
   }
   const projects = UI.filterRows(state.projects, ['startDate', 'createdAt', 'updatedAt', 'dueDate']).filter((project) => project.clientId === client.id && !project.archived);
   const activeProjects = projects.filter((project) => project.status === 'ACTIVE').length;
+  const requests = UI.filterRows(portalData?.requests || [], ['Created At', 'Updated At']);
+  const openRequests = requests.filter((request) => !['CLOSED', 'REJECTED', 'CANCELLED'].includes(String(request.Status || '').toUpperCase())).length;
+  const outstanding = Number(portalData?.statement?.outstandingBalance || 0);
   return `
     <section class="portal-hero">
       <div>
@@ -659,8 +716,8 @@ function renderClientDashboard() {
       ${[
         ['projects', 'إجمالي المشروعات', projects.length, 'كل المشروعات المرتبطة بهذا الحساب'],
         ['projects', 'المشروعات النشطة', activeProjects, 'قيد التنفيذ حاليًا'],
-        ['orders', 'الطلبات المفتوحة', 0, 'ستظهر بعد توصيل دورة الطلبات'],
-        ['finance', 'الرصيد المستحق', money(0), 'يُحتسب من الفواتير والمدفوعات فقط']
+        ['orders', 'الطلبات المفتوحة', openRequests, requests.length ? `من إجمالي ${requests.length} طلب` : 'لا توجد طلبات مفتوحة'],
+        ['finance', 'الرصيد المستحق', money(outstanding), 'من كشف الحساب والفواتير والمدفوعات']
       ].map(([icon, label, value, note]) => `<article class="metric-card"><span class="metric-icon">${svg(icon)}</span><div><span class="metric-label">${label}</span><strong class="metric-value">${value}</strong><small class="metric-note">${note}</small></div></article>`).join('')}
     </section>
     <article class="panel">
@@ -724,6 +781,8 @@ function employeeVisibleProjects() {
 }
 
 function renderEmployeeDashboard() {
+  const employeeRole = String(currentUser?.role || 'EMPLOYEE').toUpperCase();
+  if (employeeRole === 'FINANCE' && serverDashboard?.metrics) return renderFinanceEmployeeDashboard();
   const projects = employeeVisibleProjects();
   const dueSoon = projects.filter((project) => project.dueDate && new Date(project.dueDate).getTime() - Date.now() < 7 * 86400000).length;
   return `
@@ -737,7 +796,7 @@ function renderEmployeeDashboard() {
     </section>
     <section class="metrics-grid">
       ${[
-        ['tasks', 'المهام المسندة', projects.length, 'محاكاة من المشروعات المفتوحة'],
+        ['tasks', 'المهام المسندة', projects.length, 'من سجلات المهام المرتبطة بحسابك'],
         ['projects', 'قيد التنفيذ', projects.filter((item) => item.status === 'ACTIVE').length, 'تحتاج تحديث التقدم'],
         ['alerts', 'استحقاق قريب', dueSoon, 'خلال 7 أيام'],
         ['documents', 'روابط التسليم', projects.filter((item) => item.deliveryLink).length, 'مسجلة بواسطة فريق التنفيذ']
@@ -745,6 +804,36 @@ function renderEmployeeDashboard() {
     </section>
     ${renderEmployeeTaskList(projects, true)}
   `;
+}
+
+function renderFinanceEmployeeDashboard() {
+  const metrics = serverDashboard.metrics || {};
+  return `
+    <section class="portal-hero employee-hero">
+      <div><span class="hero-kicker">${svg('finance')} Finance Workspace</span><h2>ملخص المالية والتحصيل</h2><p>المؤشرات المعروضة من الفواتير والمدفوعات والمصروفات والحسابات البنكية الفعلية.</p></div>
+      <span class="privacy-badge">Financial role</span>
+    </section>
+    <section class="metrics-grid">
+      ${[
+        ['finance','الإيراد',money(metrics.revenue || 0),'إجمالي الفواتير والإيرادات'],
+        ['finance','المحصّل',money(metrics.collected || 0),'المدفوعات المسجلة'],
+        ['finance','المستحق',money(metrics.outstanding || 0),'رصيد العملاء غير المحصل'],
+        ['banking','رصيد البنك',money(metrics.bankBalance || 0),'الحسابات النشطة']
+      ].map(([icon,label,value,note]) => `<article class="metric-card"><span class="metric-icon">${svg(icon)}</span><div><span class="metric-label">${label}</span><strong class="metric-value">${value}</strong><small class="metric-note">${note}</small></div></article>`).join('')}
+    </section>
+    <section class="content-grid">
+      <article class="panel"><header class="panel-header"><div><h2>ملخص المصروفات والربح</h2><p>قراءة مباشرة من النظام</p></div></header><div class="panel-body entity-meta">
+        <div><span>تكلفة الإعلانات</span><strong>${money(metrics.adExpenses || 0)}</strong></div>
+        <div><span>مصروفات أخرى</span><strong>${money(metrics.expenses || 0)}</strong></div>
+        <div><span>صافي الربح</span><strong>${money(metrics.netProfit || 0)}</strong></div>
+        <div><span>هامش الربح</span><strong>${UI.number(metrics.profitMargin || 0)}%</strong></div>
+      </div></article>
+      <article class="panel"><header class="panel-header"><div><h2>اختصارات مالية</h2><p>انتقل مباشرة إلى الوحدة المطلوبة</p></div></header><div class="panel-body quick-actions">
+        ${quickAction('finance','الفواتير والمدفوعات','التسجيل والتحصيل والطباعة','go-finance')}
+        ${quickAction('banking','البنك والحركات','الإيداعات والخصومات والأرصدة','go-banking')}
+        ${quickAction('reports','التقارير','الإيراد والربحية والتحليل','go-reports')}
+      </div></article>
+    </section>`;
 }
 
 function renderEmployeeTasks() {
@@ -1477,9 +1566,10 @@ document.addEventListener('click', async (event) => {
   if (action === 'open-more') openMoreSheet();
   if (action === 'add-client') openEntityDialog('client');
   if (action === 'add-project') openEntityDialog('project');
-  if (action === 'go-projects') navigate('projects');
-  if (action === 'go-approvals') navigate('approvals');
-  if (action === 'go-dashboard') navigate('dashboard');
+  if (action.startsWith('go-')) {
+    const destination = action.slice(3);
+    if (pageMetadata[destination]) navigate(destination);
+  }
 
   if (action === 'view-entity') {
     const entityType = actionTarget.dataset.entityType || 'project';
